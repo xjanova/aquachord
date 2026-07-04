@@ -1,0 +1,30 @@
+# Node
+node_modules/
+dist/
+dev-dist/
+*.local
+npm-debug.log*
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+
+# Server runtime data
+server/data/uploads/
+server/data/stems/
+server/data/*.db
+server/data/*.wav
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
