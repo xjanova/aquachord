@@ -1,0 +1,23 @@
+# ============================================================
+#  AquaChord — cache policy
+#  ปัญหาเดิม: AWS edge + service worker แคช sw.js/styles.css เก่าไว้
+#  → หลัง deploy ผู้ใช้ติดเวอร์ชันเก่า (โลโก้/มาสคอต/CSS ไม่อัปเดต)
+#  แก้: service worker + HTML + manifest + version = no-store (สดเสมอ → SW อัปเดตทันที)
+#        assets (css/js/รูป) = no-cache (revalidate; SW cache เป็นชั้น offline)
+# ============================================================
+<IfModule mod_headers.c>
+  # assets — ให้ revalidate กับ origin เสมอ (กัน edge ค้างของเก่า)
+  <FilesMatch "\.(css|js|webp|png|svg|woff2)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  # ไฟล์ที่ต้องสดเสมอ — วางท้ายสุดให้ทับกฎด้านบน
+  <FilesMatch "(sw\.js|index\.html|\.webmanifest|version\.json)$">
+    Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
+    Header set Pragma "no-cache"
+  </FilesMatch>
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType application/manifest+json .webmanifest
+  AddType image/webp .webp
+</IfModule>

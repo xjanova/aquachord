@@ -621,7 +621,9 @@
 
   /* ---------------- Service worker ---------------- */
   if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+    // updateViaCache:'none' → เบราว์เซอร์ไม่ใช้ HTTP cache ตอนเช็คอัปเดต sw.js (อัปเดตไว ไม่ค้างของเก่า)
+    window.addEventListener('load', () =>
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {}));
   }
 
   /* ---------------- Boot ---------------- */
