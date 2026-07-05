@@ -39,6 +39,12 @@ sed -i -E "s#(assets/styles\.css)\"#\1?v=$SHA\"#g; s#(assets/js/[A-Za-z0-9_-]+\.
 sed -i "s#register('sw.js'#register('sw.js?v=$SHA'#" "$WEB/assets/js/app.js"
 sed -i -E "s#('\./assets/(styles\.css|js/[A-Za-z0-9_-]+\.js))'#\1?v=$SHA'#g" "$WEB/sw.js"
 
+# cache-bust รูป (mascot/logo) ด้วย — ใช้ชื่อไฟล์เดิม Cloudflare จะ cache ของเก่า
+for f in "$WEB/index.html" "$WEB/assets/js/app.js"; do
+  sed -i -E "s#(assets/(mascot-sm|mascot|logo-mark|logo)\.(webp|png))([\"' ])#\1?v=$SHA\4#g" "$f"
+done
+sed -i -E "s#url\((mascot-sm|mascot|logo-mark|logo)\.(webp|png)\)#url(\1.\2?v=$SHA)#g" "$WEB/assets/styles.css"
+
 echo "→ ตั้งสิทธิ์ไฟล์ ..."
 find "$WEB" -type d -exec chmod 755 {} \;
 find "$WEB" -type f -exec chmod 644 {} \;
