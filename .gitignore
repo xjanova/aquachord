@@ -32,3 +32,7 @@ venv/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# stray media ในรากที่ไม่ใช่ส่วนของแอป
+/girl.*
+/logo2.png
