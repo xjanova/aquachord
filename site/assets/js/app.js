@@ -48,6 +48,10 @@
     const recent = Store.all().slice(0, 4);
     view.innerHTML = `
       <section class="card hero reveal">
+        <img class="hero-mascot" alt="" aria-hidden="true" decoding="async"
+             src="assets/mascot.webp"
+             srcset="assets/mascot-sm.webp 381w, assets/mascot.webp 686w"
+             sizes="(max-width: 560px) 42vw, 34vw" />
         <img class="hero-logo" src="assets/logo.png" alt="AquaChord" />
         <span class="hero-badge"><span class="dot"></span>${t('hero.badge')}</span>
         <h1>${t('hero.title1')}<br/><span class="grad">${t('hero.title2')}</span></h1>
