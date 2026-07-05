@@ -35,7 +35,13 @@ function route(string $m, string $pattern, string $method, string $path, callabl
 
 /* ---------------- system ---------------- */
 route($method, '/health', 'GET', $path, function () {
-    send_json(['status' => 'ok', 'service' => 'aquachord-api', 'version' => '1.0.0', 'needs_setup' => admin_count() === 0]);
+    $ver = '1.0.0';
+    $vf = ($_SERVER['DOCUMENT_ROOT'] ?? '') . '/version.json';
+    if (is_file($vf)) {
+        $j = json_decode((string) @file_get_contents($vf), true);
+        if (!empty($j['version'])) $ver = $j['version'];
+    }
+    send_json(['status' => 'ok', 'service' => 'aquachord-api', 'version' => $ver, 'needs_setup' => admin_count() === 0]);
 });
 
 route($method, '/setup-status', 'GET', $path, function () {

@@ -497,7 +497,7 @@
         </div>
         <div class="setting-row">
           <div class="sr-label">${t('settings.version')}</div>
-          <div class="muted">AquaChord 0.1.0 · demo</div>
+          <div class="muted" id="appVersion">AquaChord</div>
         </div>
       </section>`;
 
@@ -521,6 +521,10 @@
         <ul><li>${t('copyright.li1')}</li><li>${t('copyright.li2')}</li><li>${t('copyright.li3')}</li></ul>
         <div class="modal-actions"><button class="btn" onclick="document.getElementById('modalRoot').innerHTML=''">${t('common.close')}</button></div>`);
     });
+    fetch('version.json', { cache: 'no-store' }).then((r) => r.json()).then((v) => {
+      const e = view.querySelector('#appVersion');
+      if (e) e.textContent = 'AquaChord v' + v.version + (v.sha && v.sha !== 'dev' ? ' · ' + v.sha : '');
+    }).catch(() => {});
   }
 
   /* ---------------- Router ---------------- */
