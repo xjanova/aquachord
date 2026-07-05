@@ -7,6 +7,8 @@ const ASSETS = [
   './assets/favicon.svg',
   './assets/logo.png',
   './assets/logo-mark.png',
+  './assets/mascot.webp',
+  './assets/mascot-sm.webp',
   './assets/js/i18n.js',
   './assets/js/music.js',
   './assets/js/chordpro.js',

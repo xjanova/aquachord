@@ -72,6 +72,23 @@ body {
   to   { transform: translate3d(3%, 2%, 0) scale(1.08); }
 }
 
+/* ---------- Mascot (ยืนขวาจอ · หลัง content · เหนือฟองน้ำ) ---------- */
+.mascot {
+  position: fixed; right: 0; bottom: 0; z-index: 5;   /* bubbles=0 < mascot=5 < content=10 */
+  height: clamp(320px, 66vh, 680px); width: auto; max-width: 42vw;
+  object-fit: contain; object-position: bottom right;
+  pointer-events: none; user-select: none; -webkit-user-select: none;
+  filter: drop-shadow(0 14px 44px rgba(11, 125, 117, 0.35));
+  animation: mascotFloat 7s ease-in-out infinite;
+  opacity: 0.95;
+  will-change: transform;
+}
+@keyframes mascotFloat { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+html[data-theme="dark"] .mascot { filter: drop-shadow(0 14px 48px rgba(168, 85, 247, 0.42)); }
+@media (max-width: 760px) {
+  .mascot { height: 44vh; max-width: 62vw; right: -4%; opacity: 0.48; }
+}
+
 /* ---------- Glass primitive ---------- */
 .glass {
   background: var(--glass-bg);
