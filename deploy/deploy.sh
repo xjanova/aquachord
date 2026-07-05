@@ -33,6 +33,12 @@ printf '{"version":"%s","sha":"%s","builtAt":%s}\n' "$VER" "$SHA" "$TS" > "$WEB/
 # บัมป์ cache ของ service worker อัตโนมัติทุก deploy → เครื่องผู้ใช้โหลดของใหม่เอง
 sed -i "s/const CACHE = '[^']*';/const CACHE = 'aquachord-$VER-$SHA';/" "$WEB/sw.js"
 
+# cache-bust: เติม ?v=<sha> ให้ CSS/JS ทุกตัว — กัน Cloudflare/SW เสิร์ฟของเก่า
+# (Cloudflare cache static แต่ไม่ cache HTML → index.html สด → URL ใหม่ = โหลด CSS/JS สดเสมอ)
+sed -i -E "s#(assets/styles\.css)\"#\1?v=$SHA\"#g; s#(assets/js/[A-Za-z0-9_-]+\.js)\"#\1?v=$SHA\"#g" "$WEB/index.html"
+sed -i "s#register('sw.js'#register('sw.js?v=$SHA'#" "$WEB/assets/js/app.js"
+sed -i -E "s#('\./assets/(styles\.css|js/[A-Za-z0-9_-]+\.js))'#\1?v=$SHA'#g" "$WEB/sw.js"
+
 echo "→ ตั้งสิทธิ์ไฟล์ ..."
 find "$WEB" -type d -exec chmod 755 {} \;
 find "$WEB" -type f -exec chmod 644 {} \;
