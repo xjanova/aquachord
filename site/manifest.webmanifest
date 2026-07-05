@@ -1,0 +1,19 @@
+{
+  "name": "AquaChord — แกะคอร์ดเพลงด้วย AI",
+  "short_name": "AquaChord",
+  "description": "แกะคอร์ดกีตาร์ แท็บ และเนื้อเพลงจากลิงก์วิดีโอหรือไฟล์เสียงด้วย AI ฟังเสียงโน้ตได้ แก้ไขได้",
+  "lang": "th",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#0d9488",
+  "background_color": "#eafcf7",
+  "categories": ["music", "education", "productivity"],
+  "icons": [
+    { "src": "icons/pwa-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/pwa-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,30 +1,34 @@
-# Node
+# --- Deploy artifacts ---
+*.tgz
+site.tgz
+
+# --- Secrets / DB (backend config lives on the server in private/, NEVER commit) ---
+**/config.php
+!**/config.sample.php
+**/private/
+*.sqlite
+*.sqlite-*
+.env
+.env.*
+!.env.example
+
+# --- Node / build ---
 node_modules/
 dist/
 dev-dist/
 *.local
 npm-debug.log*
 
-# Env / secrets
-.env
-.env.*
-!.env.example
-
-# Python
+# --- Python (AI pipeline dev) ---
 __pycache__/
 *.pyc
 .venv/
 venv/
 .pytest_cache/
 
-# Server runtime data
-server/data/uploads/
-server/data/stems/
-server/data/*.db
-server/data/*.wav
-
-# OS / editor
-.DS_Store
-Thumbs.db
+# --- Local tooling / editor / OS ---
+.claude/
 .idea/
 .vscode/
+.DS_Store
+Thumbs.db

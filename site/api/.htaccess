@@ -1,0 +1,26 @@
+# AquaChord API — route ทุกอย่างเข้า index.php + ส่ง Authorization header ให้ PHP
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /api/
+  # ส่ง Authorization: Bearer ... ให้ PHP (FPM มักตัดทิ้ง)
+  RewriteCond %{HTTP:Authorization} ^(.+)$
+  RewriteRule ^ - [E=HTTP_AUTHORIZATION:%1]
+  # ไฟล์/โฟลเดอร์จริงไม่ต้อง rewrite (index.php เอง)
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteRule ^ index.php [L]
+</IfModule>
+
+# เผื่อ Apache รุ่นรองรับ
+<IfModule mod_setenvif.c>
+  SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
+</IfModule>
+CGIPassAuth On
+
+# ห้ามเข้าถึงไฟล์ภายในโดยตรง
+<FilesMatch "\.(sqlite|db|md)$">
+  Require all denied
+</FilesMatch>
+# บล็อกการเรียก lib/*.php ตรง ๆ (index.php include เท่านั้น)
+<FilesMatch "^(db|auth|util)\.php$">
+  Require all denied
+</FilesMatch>
