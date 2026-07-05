@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  php-lint:
+    name: Lint PHP (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - name: php -l ทุกไฟล์ใน site/api
+        run: |
+          set -e
+          n=0
+          while IFS= read -r -d '' f; do
+            php -l "$f"
+            n=$((n+1))
+          done < <(find site/api -name '*.php' -print0)
+          echo "✓ linted $n PHP files"
+
+  web-check:
+    name: Check JS / JSON (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: node --check ทุกไฟล์ JS
+        run: |
+          set -e
+          for f in site/assets/js/*.js site/admin/admin.js site/sw.js; do
+            node --check "$f" && echo "ok: $f"
+          done
+      - name: ตรวจ JSON (manifest, version)
+        run: |
+          node -e "JSON.parse(require('fs').readFileSync('site/manifest.webmanifest','utf8'));console.log('manifest ok')"
+          node -e "JSON.parse(require('fs').readFileSync('site/version.json','utf8'));console.log('version.json ok')"
+      - name: VERSION เป็น semver
+        run: |
+          V=$(tr -d '[:space:]' < VERSION)
+          echo "VERSION=$V"
+          echo "$V" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || { echo "::error::VERSION ไม่ใช่ semver"; exit 1; }
