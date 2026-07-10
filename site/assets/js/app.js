@@ -136,44 +136,53 @@
         const url = view.querySelector('#urlInput').value.trim();
         if (!url) { toast(t('ingest.needInput')); return; }
         if (!/^https?:\/\/.+\..+/.test(url)) { toast(t('ingest.badUrl')); return; }
+        // ลิงก์วิดีโอ/สตรีมมิง ดึงไฟล์เสียงตรง ๆ ไม่ได้ — ต้องอัปโหลดไฟล์แทน (ไม่หลอกผู้ใช้)
+        if (/(youtube\.com|youtu\.be|youtube-nocookie\.com|tiktok\.com|facebook\.com|fb\.watch|instagram\.com|spotify\.com|soundcloud\.com|vimeo\.com|music\.apple\.com)/i.test(url)) {
+          toast(t('ingest.urlNotSupported')); return;
+        }
         input = { kind: 'url', url };
       } else {
         if (!pickedFile) { toast(t('ingest.needInput')); return; }
-        input = { kind: 'file', name: pickedFile.name };
+        input = { kind: 'file', file: pickedFile };
       }
       ensureCopyrightAccepted(() => startJob(input));
     });
   }
 
-  /* ---------------- Job progress ---------------- */
+  /* ---------------- Job progress (วิเคราะห์จริงในเครื่อง — analyze.js) ---------------- */
+  let jobRunning = false;
   function startJob(input) {
+    if (jobRunning) return; // กันกดซ้ำระหว่างวิเคราะห์
+    jobRunning = true;
     const controller = { aborted: false };
     view.innerHTML = `
       <section class="card job reveal">
         <div class="section-title">🌀 <span id="jobTitle">${t('job.title')}</span></div>
         <div class="progress-bar"><div class="progress-fill" id="jobFill"></div></div>
         <div class="job-stages" id="jobStages">
-          ${Demo.STAGES.map((s) => `
+          ${Analyze.STAGES.map((s) => `
             <div class="stage-row" data-stage="${s}">
               <div class="stage-dot">${stageIcon(s)}</div>
               <div class="stage-label">${t('job.stage.' + s)}</div>
             </div>`).join('')}
         </div>
-        <div class="muted" style="text-align:center">${t('job.demoNote')}</div>
+        <div class="muted" style="text-align:center">${t('job.realNote')}</div>
         <button class="btn-ghost btn-block" id="jobCancel">${t('job.cancel')}</button>
       </section>`;
 
     const fill = view.querySelector('#jobFill');
     const stagesEl = view.querySelector('#jobStages');
     view.querySelector('#jobCancel').addEventListener('click', () => {
-      controller.aborted = true; location.hash = '#/';
+      controller.aborted = true; jobRunning = false; location.hash = '#/';
     });
 
     function onProgress(p) {
       if (controller.aborted) return;
+      // ผู้ใช้ออกจากหน้านี้แล้ว (กด back ฯลฯ) → หยุดงานเงียบ ๆ
+      if (!view.contains(fill)) { controller.aborted = true; return; }
       fill.style.width = p.percent + '%';
       const rows = stagesEl.querySelectorAll('.stage-row');
-      const idx = Demo.STAGES.indexOf(p.stage);
+      const idx = Analyze.STAGES.indexOf(p.stage);
       rows.forEach((r, i) => {
         r.classList.toggle('active', i === idx && p.stage !== 'done');
         r.classList.toggle('done', p.stage === 'done' ? true : i < idx);
@@ -181,18 +190,35 @@
       if (p.stage === 'done') { view.querySelector('#jobTitle').textContent = t('job.done'); }
     }
 
-    Demo.runFakePipeline(input, onProgress, controller)
+    Analyze.run(input, onProgress, controller)
       .then((doc) => {
+        jobRunning = false;
         if (controller.aborted) return;
+        onProgress({ stage: 'done', percent: 100 });
         Store.upsert(doc);
         toast(t('job.done'));
         location.hash = '#/song/' + doc.id;
       })
-      .catch(() => { /* cancelled */ });
+      .catch((err) => {
+        jobRunning = false;
+        if (controller.aborted || (err && err.message === 'cancelled')) return;
+        toast(jobErrMsg(err));
+        if ((location.hash || '#/') === '#/' || location.hash === '#') route();
+        else location.hash = '#/';
+      });
+  }
+
+  function jobErrMsg(err) {
+    const code = err && err.code;
+    if (code === 'decode') return t('job.err.decode');
+    if (code === 'short') return t('job.err.short');
+    if (code === 'fetch') return t('job.err.fetch');
+    if (code === 'toobig') return t('job.err.tooBig');
+    return t('job.err.generic');
   }
 
   function stageIcon(s) {
-    const map = { ingest:'⬇', separate:'🎚', chords:'🎵', lyrics:'✎', tabs:'🎸', assemble:'📄' };
+    const map = { ingest:'⬇', prep:'🎚', beats:'🥁', chords:'🎵', key:'🎼', assemble:'📄' };
     return `<span style="font-size:13px">${map[s] || '•'}</span>`;
   }
 
@@ -281,7 +307,7 @@
             <div class="song-thumb">${esc((song.title||'?')[0].toUpperCase())}</div>
             <div style="flex:1;min-width:0">
               <h1>${esc(song.title)}</h1>
-              <div class="song-sub muted">${esc([song.artist, song.creator?(t('library.by')+' '+song.creator):''].filter(Boolean).join(' · '))}</div>
+              <div class="song-sub muted">${esc([song.artist, song.creator?(t('library.by')+' '+song.creator):'', song.tempo?song.tempo+' BPM':''].filter(Boolean).join(' · '))}</div>
             </div>
             <button class="song-fav ${song.favorite?'on':''}" data-fav="${song.id}" style="font-size:1.6rem">${song.favorite?'★':'☆'}</button>
           </div>
