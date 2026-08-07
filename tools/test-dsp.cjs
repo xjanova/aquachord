@@ -280,6 +280,59 @@ function testLayout() {
   return fails;
 }
 
+/* ---------------- เทสต์แยกเสียงร้องออกจากดนตรี ---------------- */
+// สร้างสเตอริโอ: เสียงร้องกลาง (เท่ากันสองข้าง) + ดนตรีแพนซ้าย/ขวา
+// แล้ววัดว่า isolateCenter ทำให้อัตราส่วน ร้อง:ดนตรี ดีขึ้นกี่ dB
+function testIsolate() {
+  const fails = [];
+  const rnd = mulberry32(11);
+  const n = SR * 4;
+  const vocal = new Float32Array(n), gtrL = new Float32Array(n), gtrR = new Float32Array(n);
+  addMelody(vocal, rnd, 0, false, 0.1, 3.9, 0.5, 0);          // "เสียงร้อง"
+  for (const m of [48, 52, 55]) addNote(gtrL, rnd, m, 0.1, 3.8, 0.5, 0);  // ดนตรีข้างซ้าย
+  for (const m of [43, 47, 50]) addNote(gtrR, rnd, m, 0.1, 3.8, 0.5, 0);  // ดนตรีข้างขวา
+  const L = new Float32Array(n), R = new Float32Array(n);
+  for (let i = 0; i < n; i++) { L[i] = vocal[i] + gtrL[i]; R[i] = vocal[i] + gtrR[i]; }
+
+  const out = DSP.isolateCenter(L, R);
+  // a/b ต้องเป็นจำนวนเต็ม — ดัชนีทศนิยมอ่าน typed array ได้ undefined แล้วผลรวมกลายเป็น NaN
+  const energy = (x, a, b) => { let s = 0; for (let i = Math.floor(a); i < Math.floor(b); i++) s += x[i] * x[i]; return s; };
+  // วัดผ่าน correlation กับ vocal เทียบกับ correlation กับดนตรี
+  const corr = (x, y) => {
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < n; i++) { sxy += x[i] * y[i]; sxx += x[i] * x[i]; syy += y[i] * y[i]; }
+    return sxy / (Math.sqrt(sxx * syy) || 1);
+  };
+  const mono = new Float32Array(n);
+  for (let i = 0; i < n; i++) mono[i] = (L[i] + R[i]) / 2;
+  const music = new Float32Array(n);
+  for (let i = 0; i < n; i++) music[i] = (gtrL[i] + gtrR[i]) / 2;
+
+  const beforeV = corr(mono, vocal), beforeM = corr(mono, music);
+  const afterV = corr(out, vocal), afterM = corr(out, music);
+  console.log('  ก่อนแยก: corr(ร้อง)=' + beforeV.toFixed(3) + ' corr(ดนตรี)=' + beforeM.toFixed(3));
+  console.log('  หลังแยก: corr(ร้อง)=' + afterV.toFixed(3) + ' corr(ดนตรี)=' + afterM.toFixed(3));
+  const gainBefore = beforeV / (beforeM || 1e-9), gainAfter = afterV / (afterM || 1e-9);
+  console.log('  อัตราส่วน ร้อง/ดนตรี: ' + gainBefore.toFixed(2) + ' → ' + gainAfter.toFixed(2));
+  if (!(afterM < beforeM * 0.75)) fails.push('ดนตรีไม่ได้เบาลงพอ (' + beforeM.toFixed(3) + ' → ' + afterM.toFixed(3) + ')');
+  if (!(afterV > 0.5)) fails.push('เสียงร้องถูกทำลายไปด้วย (corr=' + afterV.toFixed(3) + ')');
+  if (!(gainAfter > gainBefore * 1.3)) fails.push('อัตราส่วนร้อง/ดนตรีดีขึ้นไม่พอ');
+  if (out.length !== n) fails.push('ความยาวสัญญาณเปลี่ยน: ' + out.length + ' != ' + n);
+
+  // mono (L==R) → ทุกอย่างอยู่กลางหมด ต้องคืนสัญญาณใกล้เดิม ไม่ใช่ความเงียบ
+  const same = DSP.isolateCenter(mono, mono);
+  if (!(energy(same, SR / 2, n - SR / 2) > energy(mono, SR / 2, n - SR / 2) * 0.5)) {
+    fails.push('อินพุต mono ถูกหักจนเงียบ');
+  }
+  // prepForASR ต้อง normalize และไม่ทำให้เป็น NaN
+  const prepped = DSP.prepForASR(out, SR);
+  let mx = 0, bad = 0;
+  for (let i = 0; i < prepped.length; i++) { const v = prepped[i]; if (!isFinite(v)) bad++; if (Math.abs(v) > mx) mx = Math.abs(v); }
+  if (bad) fails.push('prepForASR ให้ค่า NaN/Infinity ' + bad + ' ตัว');
+  if (!(mx > 0.9 && mx <= 1.0)) fails.push('prepForASR normalize ไม่ถูก (peak=' + mx.toFixed(3) + ')');
+  return fails;
+}
+
 /* ---------------- main ---------------- */
 (async () => {
   console.log('=== AquaChord DSP benchmark (สังเคราะห์เสียงจริง ไม่ mock) ===\n');
@@ -330,6 +383,11 @@ function testLayout() {
   const layoutFails = testLayout();
   if (layoutFails.length) layoutFails.forEach((f) => problems.push('layout: ' + f));
   console.log(layoutFails.length ? layoutFails.join('\n') : 'ผ่านทุกข้อ');
+
+  console.log('\n=== เทสต์แยกเสียงร้องออกจากดนตรี (ก่อนส่ง Whisper) ===');
+  const isoFails = testIsolate();
+  if (isoFails.length) isoFails.forEach((f) => problems.push('isolate: ' + f));
+  console.log(isoFails.length ? isoFails.join('\n') : 'ผ่านทุกข้อ');
 
   if (problems.length) {
     console.error('\n✗ FAILED:\n- ' + problems.join('\n- '));

@@ -420,6 +420,18 @@ html[data-theme="dark"] .lyr-opts select { background: rgba(255,255,255,0.07); c
 html[data-theme="dark"] .lyr-opts select option { background: #10222f; }
 html[data-theme="dark"] .chip-beta { background: rgba(168, 85, 247, 0.24); color: #d8b4fe; }
 
+/* ---------- แถบสถานะเนื้อร้องในหน้าเพลง ---------- */
+.lyr-status {
+  margin-top: 10px; padding: 8px 12px; border-radius: 10px;
+  font-size: 0.78rem; line-height: 1.5; color: var(--ink-soft);
+  background: rgba(255,255,255,0.45); border: 1px solid var(--line);
+}
+.lyr-status.ok { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.3); color: var(--teal-deep); }
+.lyr-status.warn { background: rgba(245,158,11,0.14); border-color: rgba(245,158,11,0.35); color: #92600a; }
+html[data-theme="dark"] .lyr-status { background: rgba(255,255,255,0.05); border-color: rgba(120,220,205,0.22); }
+html[data-theme="dark"] .lyr-status.ok { background: rgba(45,212,191,0.14); border-color: rgba(45,212,191,0.3); color: var(--teal-ink); }
+html[data-theme="dark"] .lyr-status.warn { background: rgba(245,158,11,0.16); border-color: rgba(245,158,11,0.35); color: #fcd34d; }
+
 /* ---------- Motion off ---------- */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }

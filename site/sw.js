@@ -1,5 +1,5 @@
 /* AquaChord service worker — precache app shell, offline-first */
-const CACHE = 'aquachord-1.3.0';
+const CACHE = 'aquachord-1.3.1';
 const ASSETS = [
   './',
   './index.html',

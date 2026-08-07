@@ -268,6 +268,70 @@
     };
   }
 
+  /* ---------------- แยกเสียงร้องออกจากดนตรี (center extraction) ----------------
+     เสียงร้องเกือบทุกเพลงถูกแพนไว้กลาง (เท่ากันทั้ง L/R) ส่วนดนตรีกระจายซ้าย-ขวา
+     ต่อ bin: mid=(L+R)/2, side=(L−R)/2 → |center| ≈ max(0, |mid| − k·|side|)
+     คงเฟสของ mid ไว้ แล้ว overlap-add กลับ (หารด้วยผลรวมหน้าต่างจริง = คืนรูปได้เป๊ะ)
+     ผลคือดนตรีเบาลงมาก Whisper จับคำไทยได้ดีขึ้นชัดเจนบนเพลงมิกซ์เต็ม */
+  function isolateCenter(L, R, opts) {
+    opts = opts || {};
+    const N = opts.fftN || 2048, HOP = N >> 1;
+    const k = opts.k != null ? opts.k : 1.0;   // ความแรงในการหักเสียงข้าง
+    const floor = opts.floor != null ? opts.floor : 0.08; // เหลือพื้นไว้กัน artifact
+    const len = Math.min(L.length, R.length);
+    if (len < N) return L.slice(0, len);
+    const fp = makeFFT(N), win = hann(N);
+    const mr = new Float32Array(N), mi = new Float32Array(N);
+    const sr_ = new Float32Array(N), si = new Float32Array(N);
+    const out = new Float32Array(len), wsum = new Float32Array(len);
+    const nFrames = Math.floor((len - N) / HOP) + 1;
+    for (let f = 0; f < nFrames; f++) {
+      const off = f * HOP;
+      for (let i = 0; i < N; i++) {
+        const l = L[off + i], r = R[off + i], w = win[i];
+        mr[i] = ((l + r) * 0.5) * w; mi[i] = 0;
+        sr_[i] = ((l - r) * 0.5) * w; si[i] = 0;
+      }
+      fft(fp, mr, mi);
+      fft(fp, sr_, si);
+      for (let b = 0; b < N; b++) {
+        const mm = Math.sqrt(mr[b] * mr[b] + mi[b] * mi[b]);
+        if (mm < 1e-12) { mr[b] = 0; mi[b] = 0; continue; }
+        const ss = Math.sqrt(sr_[b] * sr_[b] + si[b] * si[b]);
+        const g = Math.max(floor, (mm - k * ss) / mm);
+        mr[b] *= g; mi[b] *= g;
+      }
+      // IFFT ผ่าน FFT ของคอนจูเกต: ifft(x) = conj(fft(conj(x)))/N
+      for (let b = 0; b < N; b++) mi[b] = -mi[b];
+      fft(fp, mr, mi);
+      for (let i = 0; i < N; i++) {
+        const v = (mr[i] / N) * win[i]; // synthesis window ด้วย → hann² overlap-add
+        out[off + i] += v;
+        wsum[off + i] += win[i] * win[i];
+      }
+    }
+    for (let i = 0; i < len; i++) if (wsum[i] > 1e-6) out[i] /= wsum[i];
+    return out;
+  }
+
+  // เตรียมสัญญาณให้ ASR: ตัดเสียงต่ำ (rumble/เบส) + normalize ตาม peak
+  function prepForASR(x, sr, opts) {
+    opts = opts || {};
+    const hpHz = opts.highpass != null ? opts.highpass : 80;
+    const out = new Float32Array(x.length);
+    // one-pole high-pass
+    const dt = 1 / sr, rc = 1 / (2 * Math.PI * hpHz), a = rc / (rc + dt);
+    let yPrev = 0, xPrev = 0;
+    for (let i = 0; i < x.length; i++) {
+      const y = a * (yPrev + x[i] - xPrev);
+      out[i] = y; yPrev = y; xPrev = x[i];
+    }
+    let mx = 0;
+    for (let i = 0; i < out.length; i++) { const v = Math.abs(out[i]); if (v > mx) mx = v; }
+    if (mx > 1e-6) { const g = 0.95 / mx; for (let i = 0; i < out.length; i++) out[i] *= g; }
+    return out;
+  }
+
   /* ---------------- ศัพท์คอร์ด + template ---------------- */
   // ลำดับ quality ต่อ root — ดัชนี state = root*Q + q
   const QUALITIES = [
@@ -725,6 +789,7 @@
     SHARP, QUALITIES,
     makeFFT, fft, hann,
     detectTempo, analyzeChroma, decodeChords, toSegments,
+    isolateCenter, prepForASR,
     detectKey, refineKeyWithChords, diatonicLabels,
     gridRows, chordAt, graphemes, cleanChunks, layoutLyricLines,
   };
