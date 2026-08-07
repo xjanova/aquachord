@@ -105,7 +105,9 @@
 
   /* ---------------- ตัวเลือกถอดเนื้อร้อง (จำค่าใน localStorage) ---------------- */
   const lyrPref = {
-    get on() { return localStorage.getItem('aq.lyr.on') === '1'; },
+    // เปิดไว้เป็นค่าเริ่มต้น — คนส่วนใหญ่มาแกะเพลงเพื่ออยากได้เนื้อร้องด้วย
+    // (ปิดเองได้ และค่าที่เลือกถูกจำไว้)
+    get on() { const v = localStorage.getItem('aq.lyr.on'); return v === null ? true : v === '1'; },
     set on(v) { localStorage.setItem('aq.lyr.on', v ? '1' : '0'); },
     get model() { const m = localStorage.getItem('aq.lyr.model'); return (window.Lyrics && Lyrics.MODELS[m]) ? m : 'base'; },
     set model(v) { localStorage.setItem('aq.lyr.model', v); },
@@ -348,6 +350,23 @@
   }
 
   /* ---------------- Song view ---------------- */
+  // แถบสถานะเนื้อร้อง — เดิมแจ้งด้วย toast ที่หายไปใน 2 วินาที ผู้ใช้เลยไม่รู้ว่า
+  // "ไม่มีเนื้อร้อง" เพราะปิดสวิตช์ไว้ โหลดโมเดลไม่ผ่าน หรือเพลงไม่มีเสียงร้อง
+  function lyricsStatusHTML(song) {
+    if (song.lyricsError) {
+      return `<div class="lyr-status warn">🎤 ${esc(t('lyrics.err.' + song.lyricsError) || t('lyrics.err.run'))}</div>`;
+    }
+    if (song.lyricsEmpty) {
+      return `<div class="lyr-status">🎤 ${esc(t('lyrics.none'))}</div>`;
+    }
+    if (song.lyricsText) {
+      const iso = song.vocalIsolated ? ' · ' + t('lyrics.isolated') : '';
+      return `<div class="lyr-status ok">🎤 ${esc(t('lyrics.byAI') + iso)}</div>`;
+    }
+    // เพลงที่แกะโดยไม่ได้เปิดสวิตช์ (หรือแกะไว้ก่อนมีฟีเจอร์นี้)
+    return `<div class="lyr-status">🎤 ${esc(t('lyrics.offHint'))}</div>`;
+  }
+
   const songState = {}; // per id: {steps, capo, size, scroll}
   function renderSong(id) {
     const song = Store.get(id);
@@ -386,6 +405,7 @@
             <button class="tool" data-act="scroll" style="cursor:pointer">${st.scroll?'⏸':'▶'} ${t('song.scroll')}</button>
           </div>
           <div class="muted" style="font-size:.78rem;margin-top:8px">💡 ${t('song.tapHint')}</div>
+          ${lyricsStatusHTML(song)}
 
           <div class="chordsheet" id="sheet" style="--sheet-size:${st.size}rem">
             ${ChordPro.render(song.chordpro, { steps: st.steps, keyHint: dispKey })}
@@ -711,8 +731,19 @@
   /* ---------------- Service worker ---------------- */
   if ('serviceWorker' in navigator) {
     // updateViaCache:'none' → เบราว์เซอร์ไม่ใช้ HTTP cache ตอนเช็คอัปเดต sw.js (อัปเดตไว ไม่ค้างของเก่า)
+    // แต่หน้าที่เปิดอยู่ยังถูกเสิร์ฟจาก cache ตัวเก่าจนกว่าจะรีโหลด — ผู้ใช้เลยไม่เห็นฟีเจอร์ใหม่
+    // หลัง deploy จนกว่าจะรีเฟรชเอง → พอ SW ตัวใหม่เข้าคุม (controllerchange) ให้รีโหลดให้ 1 ครั้ง
+    const hadController = !!navigator.serviceWorker.controller; // ไม่มี = ติดตั้งครั้งแรก ไม่ต้องรีโหลด
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloading) return;
+      reloading = true;
+      location.reload();
+    });
     window.addEventListener('load', () =>
-      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch(() => {}));
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' })
+        .then((reg) => { setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000); })
+        .catch(() => {}));
   }
 
   /* ---------------- Boot ---------------- */

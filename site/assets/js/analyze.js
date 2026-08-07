@@ -33,14 +33,16 @@
     });
   }
 
-  function offlineRender(audioBuf, seconds, sr) {
+  function offlineRender(audioBuf, seconds, sr, channels) {
     const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
-    const oc = new OAC(1, Math.max(1, Math.ceil(seconds * sr)), sr);
+    const oc = new OAC(channels || 1, Math.max(1, Math.ceil(seconds * sr)), sr);
     const src = oc.createBufferSource();
     src.buffer = audioBuf;
     src.connect(oc.destination);
     src.start(0);
-    return oc.startRendering().then((r) => r.getChannelData(0));
+    return oc.startRendering().then((r) => (channels === 2
+      ? { L: r.getChannelData(0), R: r.getChannelData(1) }
+      : r.getChannelData(0)));
   }
 
   // FIR lowpass (windowed sinc) + decimate — ใช้ตอน OfflineAudioContext ไม่รับ sample rate ที่ขอ
@@ -91,6 +93,21 @@
     catch (e) { data0 = mixdown(audioBuf).subarray(0, Math.ceil(seconds * sr0)); }
     const factor = Math.max(1, Math.round(sr0 / targetSr));
     return { data: decimate(data0, factor), sr: sr0 / factor };
+  }
+
+  /* เตรียมเสียงให้ Whisper: เพลงสเตอริโอ → ดึงเสียงกลาง (ร้อง) ออกจากดนตรีก่อน
+     Whisper ถอดคำไทยจากมิกซ์เต็ม ๆ ได้แย่มาก แต่พอเบา backing track ลงจับคำได้ดีขึ้นเยอะ
+     mono/แยกไม่สำเร็จ → ตกกลับไปใช้ mono ธรรมดา (ยังถอดได้ แค่แม่นน้อยกว่า) */
+  async function toVocalPCM(audioBuf, seconds) {
+    if (audioBuf.numberOfChannels >= 2) {
+      try {
+        const st = await offlineRender(audioBuf, seconds, LYR_SR, 2);
+        const center = DSP.isolateCenter(st.L, st.R);
+        return { data: DSP.prepForASR(center, LYR_SR), isolated: true };
+      } catch (e) { /* เรนเดอร์สเตอริโอไม่ได้ → mono */ }
+    }
+    const m = await toMono(audioBuf, seconds, LYR_SR);
+    return { data: DSP.prepForASR(m.data, m.sr), isolated: false };
   }
 
   /* ---------------- ประกอบ ChordPro ---------------- */
@@ -233,20 +250,23 @@
     const key = dec.key;
     P('key', 1);
 
-    // 6) [ตัวเลือก] lyrics: Whisper ใน worker (เสียง 16kHz)
-    let lyrChunks = null, lyricsError = null;
+    // 6) [ตัวเลือก] lyrics: Whisper ใน worker (เสียง 16kHz แยกเสียงร้องแล้ว)
+    let lyrChunks = null, lyricsError = null, vocalIsolated = false;
     if (withLyrics) {
       try {
-        P('lyrics', 0.02, I18N.t('job.lyr.dl'));
-        const pcm16 = (await toMono(audio, seconds, LYR_SR)).data;
+        P('lyrics', 0.02, I18N.t('job.lyr.prep'));
+        const vox = await toVocalPCM(audio, seconds);
+        const pcm16 = vox.data;
+        vocalIsolated = vox.isolated;
         chk(ctl);
+        P('lyrics', 0.04, I18N.t('job.lyr.dl'));
         const res = await Lyrics.transcribe(pcm16, {
           model: input.lyrics.model,
           lang: input.lyrics.lang,
           duration: seconds,
           ctl,
-          // โหลดโมเดล = 0–35% ของช่วง lyrics, ถอดเสียง = 35–100%
-          onDl: (pct) => P('lyrics', 0.02 + (pct / 100) * 0.33, I18N.t('job.lyr.dl') + ' ' + pct + '%'),
+          // โหลดโมเดล = 4–35% ของช่วง lyrics, ถอดเสียง = 35–100%
+          onDl: (pct) => P('lyrics', 0.04 + (pct / 100) * 0.31, I18N.t('job.lyr.dl') + ' ' + pct + '%'),
           onAsr: (pct, elapsed) => {
             if (pct != null) P('lyrics', 0.35 + (pct / 100) * 0.65, I18N.t('job.lyr.asr') + ' ' + pct + '%');
             else P('lyrics', 0.5, I18N.t('job.lyr.asr') + ' ' + fmtTime(elapsed || 0));
@@ -292,8 +312,9 @@
       timeline,
       lyricsText,
       source: input.kind === 'file' ? { kind: 'upload', ref: srcName } : { kind: 'url', ref: input.url },
-      confidence: { chords: dec.confidence, lyrics: lyricsText ? 0.5 : 0 },
+      confidence: { chords: dec.confidence, lyrics: lyricsText ? (vocalIsolated ? 0.6 : 0.45) : 0 },
       tuningCents: ch.tuningCents,
+      vocalIsolated,
       isPublic: false,
       favorite: 0,
       playCount: 0,
