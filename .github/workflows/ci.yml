@@ -39,6 +39,10 @@ jobs:
           for f in site/assets/js/*.js site/admin/admin.js site/sw.js; do
             node --check "$f" && echo "ok: $f"
           done
+      - name: เทสต์เอนจินแกะคอร์ด (DSP benchmark กับเสียงสังเคราะห์)
+        run: node tools/test-dsp.cjs
+      - name: เทสต์ประกอบ ChordPro (คอร์ด+เนื้อร้อง)
+        run: node tools/test-assemble.cjs
       - name: ตรวจ JSON (manifest, version)
         run: |
           node -e "JSON.parse(require('fs').readFileSync('site/manifest.webmanifest','utf8'));console.log('manifest ok')"

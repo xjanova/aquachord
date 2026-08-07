@@ -76,6 +76,7 @@
             </div>
             <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.opus" hidden />
           </div>
+          ${lyricsBoxHTML()}
           <button class="btn btn-block" id="startBtn">🎸 ${t('ingest.start')}</button>
           <div class="copyright-hint">
             <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2zm0-8h-2V7h2z"/></svg>
@@ -102,6 +103,56 @@
   let ingestMode = 'url';
   let pickedFile = null;
 
+  /* ---------------- ตัวเลือกถอดเนื้อร้อง (จำค่าใน localStorage) ---------------- */
+  const lyrPref = {
+    get on() { return localStorage.getItem('aq.lyr.on') === '1'; },
+    set on(v) { localStorage.setItem('aq.lyr.on', v ? '1' : '0'); },
+    get model() { const m = localStorage.getItem('aq.lyr.model'); return (window.Lyrics && Lyrics.MODELS[m]) ? m : 'base'; },
+    set model(v) { localStorage.setItem('aq.lyr.model', v); },
+    get lang() { return localStorage.getItem('aq.lyr.lang') || 'th'; },
+    set lang(v) { localStorage.setItem('aq.lyr.lang', v); },
+  };
+
+  function lyricsBoxHTML() {
+    if (!window.Lyrics || typeof Worker === 'undefined') return '';
+    const on = lyrPref.on;
+    const opt = (v, label, cur) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${label}</option>`;
+    return `
+      <div class="lyr-box">
+        <label class="lyr-toggle">
+          <input type="checkbox" id="lyrOn" ${on ? 'checked' : ''} />
+          <span>🎤 ${t('lyrics.enable')}</span>
+          <span class="chip chip-beta">Beta</span>
+        </label>
+        <div class="lyr-opts" id="lyrOpts" ${on ? '' : 'hidden'}>
+          <label>${t('lyrics.lang')}
+            <select id="lyrLang">
+              ${opt('th', t('lyrics.lang.th'), lyrPref.lang)}
+              ${opt('en', t('lyrics.lang.en'), lyrPref.lang)}
+              ${opt('auto', t('lyrics.lang.auto'), lyrPref.lang)}
+            </select>
+          </label>
+          <label>${t('lyrics.model')}
+            <select id="lyrModel">
+              ${opt('tiny', t('lyrics.model.tiny'), lyrPref.model)}
+              ${opt('base', t('lyrics.model.base'), lyrPref.model)}
+              ${opt('small', t('lyrics.model.small'), lyrPref.model)}
+            </select>
+          </label>
+          <div class="muted lyr-hint">${t('lyrics.hint')}</div>
+        </div>
+      </div>`;
+  }
+
+  function wireLyricsBox() {
+    const on = view.querySelector('#lyrOn');
+    if (!on) return;
+    const opts = view.querySelector('#lyrOpts');
+    on.addEventListener('change', () => { lyrPref.on = on.checked; opts.hidden = !on.checked; });
+    view.querySelector('#lyrLang').addEventListener('change', (e) => { lyrPref.lang = e.target.value; });
+    view.querySelector('#lyrModel').addEventListener('change', (e) => { lyrPref.model = e.target.value; });
+  }
+
   function wireIngest() {
     pickedFile = null;
     view.querySelectorAll('.ingest-tab').forEach((btn) => {
@@ -127,6 +178,7 @@
     }
     function setFile(f) { pickedFile = f; dzFile.hidden = false; dzFile.textContent = t('ingest.dropFile') + ' ' + f.name; }
 
+    wireLyricsBox();
     const startBtn = view.querySelector('#startBtn');
     startBtn.addEventListener('click', () => {
       // เปิด AudioContext ใน gesture แรก (iOS)
@@ -145,6 +197,7 @@
         if (!pickedFile) { toast(t('ingest.needInput')); return; }
         input = { kind: 'file', file: pickedFile };
       }
+      if (window.Lyrics && lyrPref.on) input.lyrics = { model: lyrPref.model, lang: lyrPref.lang };
       ensureCopyrightAccepted(() => startJob(input));
     });
   }
@@ -155,23 +208,26 @@
     if (jobRunning) return; // กันกดซ้ำระหว่างวิเคราะห์
     jobRunning = true;
     const controller = { aborted: false };
+    const stageList = Analyze.stages(!!input.lyrics);
     view.innerHTML = `
       <section class="card job reveal">
         <div class="section-title">🌀 <span id="jobTitle">${t('job.title')}</span></div>
         <div class="progress-bar"><div class="progress-fill" id="jobFill"></div></div>
         <div class="job-stages" id="jobStages">
-          ${Analyze.STAGES.map((s) => `
+          ${stageList.map((s) => `
             <div class="stage-row" data-stage="${s}">
               <div class="stage-dot">${stageIcon(s)}</div>
               <div class="stage-label">${t('job.stage.' + s)}</div>
             </div>`).join('')}
         </div>
+        <div class="muted job-detail" id="jobDetail">&nbsp;</div>
         <div class="muted" style="text-align:center">${t('job.realNote')}</div>
         <button class="btn-ghost btn-block" id="jobCancel">${t('job.cancel')}</button>
       </section>`;
 
     const fill = view.querySelector('#jobFill');
     const stagesEl = view.querySelector('#jobStages');
+    const detailEl = view.querySelector('#jobDetail');
     view.querySelector('#jobCancel').addEventListener('click', () => {
       controller.aborted = true; jobRunning = false; location.hash = '#/';
     });
@@ -182,11 +238,12 @@
       if (!view.contains(fill)) { controller.aborted = true; return; }
       fill.style.width = p.percent + '%';
       const rows = stagesEl.querySelectorAll('.stage-row');
-      const idx = Analyze.STAGES.indexOf(p.stage);
+      const idx = stageList.indexOf(p.stage);
       rows.forEach((r, i) => {
         r.classList.toggle('active', i === idx && p.stage !== 'done');
-        r.classList.toggle('done', p.stage === 'done' ? true : i < idx);
+        r.classList.toggle('done', p.stage === 'done' ? true : (idx >= 0 && i < idx));
       });
+      detailEl.textContent = (p.stage !== 'done' && p.detail) || ' ';
       if (p.stage === 'done') { view.querySelector('#jobTitle').textContent = t('job.done'); }
     }
 
@@ -196,7 +253,9 @@
         if (controller.aborted) return;
         onProgress({ stage: 'done', percent: 100 });
         Store.upsert(doc);
-        toast(t('job.done'));
+        if (doc.lyricsError) toast(t('lyrics.err.' + doc.lyricsError) || t('lyrics.err.run'));
+        else if (doc.lyricsEmpty) toast(t('lyrics.none'));
+        else toast(t('job.done'));
         location.hash = '#/song/' + doc.id;
       })
       .catch((err) => {
@@ -218,7 +277,7 @@
   }
 
   function stageIcon(s) {
-    const map = { ingest:'⬇', prep:'🎚', beats:'🥁', chords:'🎵', key:'🎼', assemble:'📄' };
+    const map = { ingest:'⬇', prep:'🎚', beats:'🥁', chords:'🎵', key:'🎼', lyrics:'🎤', assemble:'📄' };
     return `<span style="font-size:13px">${map[s] || '•'}</span>`;
   }
 

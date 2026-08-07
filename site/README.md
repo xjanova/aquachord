@@ -7,14 +7,16 @@
 ```
 site/
 ├── index.html · assets/ · manifest.webmanifest · sw.js   ← PWA แอปหลัก
-│   └── assets/js: i18n · music (Web Audio) · chordpro · store · demo · app
+│   └── assets/js: i18n · music (Web Audio) · chordpro · store
+│                  · dsp (เอนจินวิเคราะห์คอร์ด — มีเทสต์ใน ../tools/test-dsp.cjs)
+│                  · lyrics + lyrics-worker (Whisper ในเบราว์เซอร์) · analyze · app
 ├── api/            ← REST API (PHP): index.php + lib/(util,db,auth)
 │   └── config.sample.php   ← คัดลอกเป็น ../private/config.php (ใส่รหัส DB จริง)
 └── admin/          ← หน้าหลังบ้าน (SPA): index.html · admin.css · admin.js
 ```
 
 ## ฟีเจอร์หน้าเว็บ
-แกะคอร์ด/เนื้อเพลง (โหมดสาธิต) · แสดง ChordPro + เปลี่ยนคีย์/คาโป้ · เล่นเสียงคอร์ด/โน้ตด้วย Web Audio (Karplus-Strong, ออฟไลน์ได้) · คลังเพลง (localStorage) · แก้ไข/นำเข้า-ส่งออก · **สองภาษา ไทย/อังกฤษ** · **โหมดมืด (ฟองอากาศม่วงเรืองแสง)** · ติดตั้งเป็นแอป (PWA)
+**แกะคอร์ดจากไฟล์เสียงจริงในเครื่อง 100%** (DSP: ชดเชยจูนเพี้ยน · แยกเบสช่วยหา root · คอร์ด maj/min/7/m7/maj7 · Viterbi รู้คีย์ 2 รอบ) · **ถอดเนื้อร้องไทย/อังกฤษด้วย Whisper ในเบราว์เซอร์ (Beta — เลือกเปิดได้ ไม่อัปโหลดเสียง)** พร้อมจัดคอร์ดวางเหนือเนื้อร้องตามจังหวะ · แสดง ChordPro + เปลี่ยนคีย์/คาโป้ · เล่นเสียงคอร์ด/โน้ตด้วย Web Audio (Karplus-Strong, ออฟไลน์ได้) · คลังเพลง (localStorage) · แก้ไข/นำเข้า-ส่งออก · **สองภาษา ไทย/อังกฤษ** · **โหมดมืด (ฟองอากาศม่วงเรืองแสง)** · ติดตั้งเป็นแอป (PWA)
 
 ## หลังบ้าน (`api/` + `admin/`)
 - **ล็อกอินครั้งแรกสร้างแอดมิน** (owner) — ป้องกันสร้างซ้ำ, bearer token, จำกัดล็อกอินผิดต่อ IP
