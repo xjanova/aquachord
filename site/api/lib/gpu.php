@@ -684,9 +684,10 @@ function gpu_job_public(array $r): array {
     ];
 }
 
+/** ตั้งงานเป็น failed — ไม่ทับงานที่ผู้ใช้ยกเลิกไปแล้ว (เช่น กดยกเลิกระหว่างอัปโหลดแล้วการส่งต่อล้มทีหลัง) */
 function gpu_job_fail(string $id, string $message): void {
-    db()->prepare('UPDATE gpu_jobs SET status = ?, error = ?, updated_at = ? WHERE id = ?')
-        ->execute(['failed', mb_substr($message, 0, 500), now_ms(), $id]);
+    db()->prepare("UPDATE gpu_jobs SET status = 'failed', error = ?, updated_at = ? WHERE id = ? AND status <> 'cancelled'")
+        ->execute([mb_substr($message, 0, 500), now_ms(), $id]);
 }
 
 /** เก็บสถานะจาก remote ลงแถว */
@@ -762,7 +763,9 @@ function gpu_route_get_config(): void {
     $snap = $cfg['remote'] ?? null;
     $tag = gpu_key_tag($cfg['partnerKey']);
     $fresh = ($_GET['fresh'] ?? '') === '1';
-    if (!$fresh && $snap && ($snap['keyTag'] ?? '') === $tag && now_ms() - (int) $snap['pingedAt'] < GPU_PING_CACHE_MS) {
+    // ?fresh=1 ยังโดนเพดาน 3 วิ (กดตรวจรัว ๆ ไม่ยิง ping ไป aixman ทุกครั้ง)
+    $maxAge = $fresh ? GPU_POLL_MIN_MS : GPU_PING_CACHE_MS;
+    if ($snap && ($snap['keyTag'] ?? '') === $tag && now_ms() - (int) $snap['pingedAt'] < $maxAge) {
         $out['remote'] = gpu_remote_public($snap);
         send_json($out);
     }

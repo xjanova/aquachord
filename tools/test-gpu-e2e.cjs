@@ -161,7 +161,12 @@ function sqlJson(sql) {
     r = await call('GET', '/gpu/config', { token: T });
     ok(r.status === 200 && r.data.remote && st.pingCount === pingsBefore + 1, 'GET config uses cached ping (<15 s)', { pc: st.pingCount });
     r = await call('GET', '/gpu/config?fresh=1', { token: T });
+    ok(r.status === 200 && st.pingCount === pingsBefore + 1, 'GET config ?fresh=1 within 3 s of last ping → cached (anti-spam)', { pc: st.pingCount });
+    await sleep(3100);
+    r = await call('GET', '/gpu/config?fresh=1', { token: T });
     ok(r.status === 200 && st.pingCount === pingsBefore + 2, 'GET config ?fresh=1 pings', { pc: st.pingCount });
+    r = await call('GET', '/gpu/config?fresh=1', { token: T });
+    ok(r.status === 200 && st.pingCount === pingsBefore + 2, 'rapid ?fresh=1 does not ping again', { pc: st.pingCount });
     r = await call('GET', '/gpu/config?ping=0', { token: T });
     ok(r.status === 200 && st.pingCount === pingsBefore + 2 && r.data.configured, 'GET config ?ping=0 no ping');
     r = await call('PUT', '/gpu/config', { token: T, json: { partnerKey: '', defaultMode: 'sheetsage2' } });
