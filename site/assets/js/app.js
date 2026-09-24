@@ -297,7 +297,8 @@
     }
     view.innerHTML = `
       <section class="reveal">
-        <div class="section-title">📚 ${t('library.title')} <span class="chip">${Store.count()} ${t('library.count')}</span></div>
+        <div class="section-title">📚 ${t('library.title')} <span class="chip">${Store.count()} ${t('library.count')}</span>
+          ${window.NotationEditor ? `<a href="#/notes/new" class="chip chip-link">＋ 🎼 ${t('nt.newSong')}</a>` : ''}</div>
       </section>
       <section class="card reveal">
         <div class="field"><input type="text" id="libSearch" placeholder="${esc(t('library.search'))}" value="${esc(libQuery)}" /></div>
@@ -367,7 +368,7 @@
     return `<div class="lyr-status">🎤 ${esc(t('lyrics.offHint'))}</div>`;
   }
 
-  const songState = {}; // per id: {steps, capo, size, scroll}
+  const songState = {}; // per id: {steps, capo, size, scroll, tab: 'chords'|'notes'}
   function renderSong(id) {
     const song = Store.get(id);
     if (!song) {
@@ -376,9 +377,18 @@
     }
     Store.markPlayed(id);
     const st = songState[id] || (songState[id] = { steps: 0, capo: song.capo || 0, size: 1.02, scroll: false });
+    // แท็บ "โน้ต": เพลงที่มีแต่ทำนอง (ไม่มีคอร์ด) หรือเพิ่งกลับจากหน้าแก้โน้ต → เปิดแท็บโน้ต
+    const hasNotation = !!window.Notation;
+    const hasMelody = !!(song.melody && song.melody.notes && song.melody.notes.length);
+    if (!st.tab) st.tab = hasMelody && String(song.chordpro || '').indexOf('[') < 0 ? 'notes' : 'chords';
+    if (window.NotationEditor && NotationEditor.takeLastEdited() === id) st.tab = 'notes';
+    if (!hasNotation) st.tab = 'chords';
+    let ntCtl = null;
 
     function paint() {
+      if (ntCtl) { ntCtl.destroy(); ntCtl = null; }
       const dispKey = song.key ? Music.transposeKey(song.key, st.steps) : null;
+      const notesTab = st.tab === 'notes';
       view.innerHTML = `
         <section class="card reveal">
           <div class="song-head">
@@ -404,6 +414,13 @@
             </span>
             <button class="tool" data-act="scroll" style="cursor:pointer">${st.scroll?'⏸':'▶'} ${t('song.scroll')}</button>
           </div>
+          ${hasNotation ? `
+          <div class="seg-switch" role="tablist">
+            <button type="button" role="tab" data-view="chords" aria-selected="${!notesTab}">🎸 ${t('nt.tabChords')}</button>
+            <button type="button" role="tab" data-view="notes" aria-selected="${notesTab}">🎼 ${t('nt.tabNotes')}</button>
+          </div>` : ''}
+          ${notesTab ? `<div class="nt-host" id="ntHost"></div>
+          ${st.steps ? `<div class="sheet-actions"><button class="btn-ghost btn-sm" data-act="reset">↺ ${t('song.original')}</button></div>` : ''}` : `
           <div class="muted" style="font-size:.78rem;margin-top:8px">💡 ${t('song.tapHint')}</div>
           ${lyricsStatusHTML(song)}
 
@@ -415,8 +432,14 @@
             <button class="btn btn-sm" data-act="strum">🎶 ${t('song.strum')}</button>
             <a class="btn-ghost btn-sm" href="#/edit/${song.id}">✎ ${t('song.edit')}</a>
             ${st.steps ? `<button class="btn-ghost btn-sm" data-act="reset">↺ ${t('song.original')}</button>` : ''}
-          </div>
+          </div>`}
         </section>`;
+
+      if (notesTab) ntCtl = Notation.mountSongView(view.querySelector('#ntHost'), song, { transpose: st.steps, capo: st.capo, size: st.size, toast });
+      view.querySelectorAll('[data-view]').forEach((b) => b.addEventListener('click', () => {
+        if (st.tab === b.dataset.view) return;
+        st.tab = b.dataset.view; paint();
+      }));
 
       // fav
       const fav = view.querySelector('[data-fav]');
@@ -555,7 +578,7 @@
       song.creator = view.querySelector('#eCreator').value.trim();
       song.key = view.querySelector('#eKey').value.trim();
       song.chordpro = body.value;
-      song.schemaVersion = 1;
+      song.schemaVersion = 2;
       Store.upsert(song);
       toast(t('editor.saved'));
       location.hash = '#/song/' + song.id;
@@ -647,6 +670,7 @@
     else if (parts[0] === 'settings') { setTab('settings'); renderSettings(); }
     else if (parts[0] === 'song') { renderSong(parts[1]); }
     else if (parts[0] === 'edit') { renderEditor(parts[1]); }
+    else if (parts[0] === 'notes' && window.NotationEditor) { NotationEditor.open(view, parts[1]); }
     else { setTab('home'); renderHome(); }
   }
   function setTab(name) {

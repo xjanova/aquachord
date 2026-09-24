@@ -1,0 +1,144 @@
+/* ============================================================
+   notation.css — โน้ตสากล (abcjs) + หน้า "ทำโน้ต"
+   สีบรรทัดห้าเส้นผูกกับตัวแปรธีม (currentColor) → โหมดมืดอ่านออก ไม่กลืนพื้น
+   ============================================================ */
+:root {
+  --nt-ink: #0c3b3a;          /* หัวโน้ต/เส้น */
+  --nt-chord: #0b7d75;        /* ชื่อคอร์ดเหนือบรรทัด */
+  --nt-label: #059669;        /* ป้ายท่อน */
+  --nt-lyric: #0c3b3a;
+  --nt-select: #db2777;       /* โน้ตที่เลือก */
+  --nt-play: #0891b2;         /* โน้ตที่กำลังเล่น */
+  --nt-paper: rgba(255, 255, 255, 0.62);
+}
+html[data-theme="dark"] {
+  --nt-ink: #e6f7f2;
+  --nt-chord: #5eead4;
+  --nt-label: #c084fc;
+  --nt-lyric: #f1fbf8;
+  --nt-select: #f472b6;
+  --nt-play: #22d3ee;
+  --nt-paper: rgba(255, 255, 255, 0.045);
+}
+
+/* ---------- สวิตช์ คอร์ด | โน้ต ในหน้าเพลง ---------- */
+.seg-switch { display: flex; gap: 6px; margin-top: 12px; background: rgba(255,255,255,0.4); border: 1px solid var(--line); border-radius: 999px; padding: 5px; }
+.seg-switch button { flex: 1; border: none; background: transparent; font-family: var(--font-display); font-weight: 500; font-size: 0.92rem; color: var(--ink-soft); padding: 9px 10px; border-radius: 999px; cursor: pointer; transition: background 0.2s var(--ease), color 0.2s; }
+.seg-switch button[aria-selected="true"] { background: #fff; color: var(--teal-deep); box-shadow: 0 4px 14px -6px rgba(13,148,136,.5); }
+html[data-theme="dark"] .seg-switch { background: rgba(255,255,255,0.05); }
+html[data-theme="dark"] .seg-switch button[aria-selected="true"] { background: rgba(45,212,191,0.16); color: var(--teal-ink); }
+
+/* ---------- แถบควบคุมแท็บโน้ต ---------- */
+.nt-host { margin-top: 12px; }
+.nt-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.nt-play-btn.on { filter: saturate(1.3) brightness(1.05); }
+.nt-chip { font-family: var(--font-display); font-size: 0.82rem; font-weight: 500; border: 1px solid var(--line); background: var(--glass-strong); color: var(--ink-soft); border-radius: 999px; padding: 8px 13px; cursor: pointer; min-height: 38px; }
+.nt-chip[aria-pressed="true"] { background: rgba(13,148,136,0.14); color: var(--teal-deep); border-color: rgba(13,148,136,0.4); }
+.nt-seg { display: inline-flex; align-items: center; gap: 2px; border: 1px solid var(--line); background: var(--glass-strong); border-radius: 999px; padding: 3px; }
+.nt-seg-lbl { font-size: 0.78rem; font-weight: 600; color: var(--ink-faint); padding: 0 6px 0 8px; }
+.nt-seg button { border: none; background: transparent; font-family: var(--font-body); font-size: 0.8rem; font-weight: 600; color: var(--ink-soft); border-radius: 999px; padding: 6px 10px; cursor: pointer; min-height: 32px; }
+.nt-seg button[aria-pressed="true"] { background: var(--aqua-grad); color: #fff; }
+html[data-theme="dark"] .nt-chip[aria-pressed="true"] { background: rgba(45,212,191,0.16); color: var(--teal-ink); }
+.nt-hint { margin-top: 10px; padding: 8px 12px; border-radius: 10px; font-size: 0.8rem; line-height: 1.5; color: var(--ink-soft); background: rgba(255,255,255,0.45); border: 1px dashed var(--line); }
+html[data-theme="dark"] .nt-hint { background: rgba(255,255,255,0.04); }
+.nt-ai { font-size: 0.75rem; margin-top: 6px; }
+
+/* ---------- กระดาษโน้ต ---------- */
+.nt-paper { color: var(--nt-ink); background: var(--nt-paper); border: 1px solid var(--line); border-radius: 14px; padding: 6px 4px; margin-top: 10px; overflow-x: auto; overflow-y: hidden; min-height: 90px; -webkit-overflow-scrolling: touch; }
+.nt-paper .nt-svg { color: inherit; }
+.nt-paper svg { display: block; color: inherit; max-width: none; }
+.nt-paper svg path, .nt-paper svg text, .nt-paper svg rect:not([fill="none"]) { fill: currentColor; }
+.nt-paper svg [stroke]:not([stroke="none"]) { stroke: currentColor; }
+.nt-paper .abcjs-chord { fill: var(--nt-chord); font-weight: 700; }
+.nt-paper .abcjs-annotation { fill: var(--nt-label); font-weight: 600; }
+.nt-paper .abcjs-lyric { fill: var(--nt-lyric); font-family: 'IBM Plex Sans Thai', 'Mitr', 'Leelawadee UI', 'Thonburi', 'Noto Sans Thai', system-ui, sans-serif; }
+.nt-paper .abcjs-title, .nt-paper .abcjs-tempo { fill: var(--nt-ink); }
+.nt-paper .abcjs-note, .nt-paper .abcjs-rest { cursor: pointer; }
+.nt-paper .nt-sel, .nt-paper .nt-sel path, .nt-paper .nt-sel text { fill: var(--nt-select) !important; stroke: var(--nt-select); }
+.nt-paper .nt-play, .nt-paper .nt-play path, .nt-paper .nt-play text { fill: var(--nt-play) !important; stroke: var(--nt-play); }
+.nt-paper .abcjs-note_selected, .nt-paper .abcjs-note_selected path { fill: var(--nt-select) !important; }
+.nt-loading, .nt-error { padding: 22px 12px; text-align: center; font-size: 0.86rem; color: var(--ink-soft); }
+.nt-error { color: #b45309; }
+html[data-theme="dark"] .nt-error { color: #fcd34d; }
+.chip-link { text-decoration: none; margin-left: auto; font-size: 0.78rem; padding: 6px 11px; }
+
+/* ============================================================
+   หน้า "ทำโน้ต" (notation-editor.js)
+   ============================================================ */
+.ne { display: grid; gap: 12px; }
+.ne-head { display: flex; align-items: center; gap: 10px; }
+.ne-htitle { flex: 1; min-width: 0; text-align: center; }
+.ne-htitle .section-title { justify-content: center; }
+.ne-song { font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#neSave.ne-dirty { box-shadow: 0 0 0 3px rgba(219,39,119,0.25), 0 10px 26px -8px rgba(13,148,136,0.65); }
+.ne-settings { border: 1px solid var(--line); border-radius: 14px; padding: 8px 12px; background: rgba(255,255,255,0.35); }
+.ne-settings summary { cursor: pointer; font-weight: 600; font-size: 0.86rem; color: var(--ink-soft); list-style-position: inside; min-height: 28px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.ne-set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 10px; }
+.ne-set-grid label, .ne-fields label { display: flex; flex-direction: column; gap: 4px; font-size: 0.76rem; font-weight: 600; color: var(--ink-faint); }
+.ne-set-grid select, .ne-set-grid input, .ne-fields input {
+  font-family: var(--font-body); font-size: 1rem; color: var(--ink); background: rgba(255,255,255,0.8);
+  border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 10px; outline: none; min-height: 42px; width: 100%;
+}
+.ne-set-grid select:focus, .ne-set-grid input:focus, .ne-fields input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(13,148,136,0.14); }
+.ne-fields input:disabled { opacity: 0.5; }
+.ne-titlef input { width: 100%; }
+.ne-staff { margin-top: 0; min-height: 110px; }
+.ne-status { font-size: 0.82rem; color: var(--ink-soft); min-height: 1.4em; line-height: 1.5; }
+.ne-status b { color: var(--teal-deep); }
+.ne-ins { color: #db2777; font-weight: 600; }
+.ne-fields { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; align-items: end; }
+.ne-inrow { display: flex; gap: 6px; align-items: center; }
+.ne-inrow input { flex: 1; min-width: 0; }
+.ne-inrow .btn-sm { padding: 10px 14px; min-height: 42px; }
+.ne-palette { display: flex; flex-wrap: wrap; gap: 6px; }
+.ne-btn {
+  flex: 1 1 58px; min-width: 54px; min-height: 52px; max-width: 96px;
+  display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  border: 1px solid var(--line); background: var(--glass-strong); color: var(--teal-ink); border-radius: 12px;
+  font-family: var(--font-body); cursor: pointer; padding: 5px 4px; transition: transform 0.12s var(--ease), background 0.15s;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.ne-btn span { font-size: 0.66rem; font-weight: 600; color: var(--ink-soft); line-height: 1.2; text-align: center; }
+.ne-btn .ne-glyph { font-size: 1.05rem; line-height: 22px; height: 22px; font-weight: 700; }
+.ne-btn:active { transform: scale(0.95); }
+.ne-btn.on { background: var(--aqua-grad); color: #fff; border-color: transparent; }
+.ne-btn.on span { color: #fff; }
+.ne-btn:disabled { opacity: 0.4; cursor: default; }
+.ne-btn:focus-visible, .ne-wk:focus-visible, .ne-bk:focus-visible { outline: 3px solid var(--nt-select); outline-offset: 1px; }
+.ne-play.on { background: linear-gradient(135deg, #22d3ee, #0891b2); color: #fff; }
+html[data-theme="dark"] .ne-settings { background: rgba(255,255,255,0.04); }
+html[data-theme="dark"] .ne-set-grid select, html[data-theme="dark"] .ne-set-grid input, html[data-theme="dark"] .ne-fields input { background: rgba(255,255,255,0.07); color: var(--ink); }
+html[data-theme="dark"] .ne-set-grid select option { background: #10222f; }
+html[data-theme="dark"] .ne-btn { color: var(--teal-ink); }
+
+/* เปียโน 2 ช่วงเสียง — เลื่อนซ้ายขวาได้บนมือถือ */
+.ne-kbd-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 0.8rem; }
+.ne-kbd { --wk: 46px; --bk: 30px; overflow-x: auto; overflow-y: hidden; border-radius: 12px; border: 1px solid var(--line); background: rgba(0,0,0,0.06); padding: 4px; -webkit-overflow-scrolling: touch; }
+.ne-kbd-inner { position: relative; display: flex; width: calc(var(--n) * var(--wk)); height: 156px; }
+.ne-wk {
+  flex: none; width: var(--wk); height: 100%; border: 1px solid #b9c9c8; border-top: none; border-radius: 0 0 9px 9px;
+  background: linear-gradient(#ffffff, #eef6f5); color: #0c3b3a; cursor: pointer; padding: 0 0 8px;
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 2px;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent; font-family: var(--font-body);
+}
+.ne-wk.ne-c { background: linear-gradient(#ffffff, #dcf5f1); }
+.ne-wk:active { background: linear-gradient(#d7f4ef, #bdebe4); }
+.ne-wk .ne-sol { font-size: 1.05rem; font-weight: 700; line-height: 1.5; }
+.ne-wk .ne-nm { font-size: 0.62rem; color: #5b7f7c; font-family: var(--font-mono); }
+.ne-bk {
+  position: absolute; top: 0; width: var(--bk); height: 60%; z-index: 2; border: none; border-radius: 0 0 7px 7px;
+  background: linear-gradient(#26343d, #0f1b22); color: #d7f3ee; cursor: pointer; padding: 0 0 6px;
+  display: flex; align-items: flex-end; justify-content: center; font-size: 0.62rem; font-family: var(--font-body);
+  box-shadow: 0 3px 6px rgba(0,0,0,0.35); touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.ne-bk:active { background: linear-gradient(#0d9488, #0b7d75); }
+.ne-wk:disabled, .ne-bk:disabled { opacity: 0.35; cursor: default; }
+html[data-theme="dark"] .ne-kbd { background: rgba(0,0,0,0.25); }
+.ne-help { font-size: 0.74rem; line-height: 1.55; }
+.ne-abc { min-height: 260px; font-size: 0.82rem; white-space: pre; overflow: auto; }
+@media (hover: none) { .ne-keys { display: none; } }
+@media (max-width: 480px) {
+  .ne-fields { grid-template-columns: 1fr; }
+  .ne-btn { flex-basis: 52px; min-width: 50px; }
+  .ne-head .btn-sm { padding: 8px 11px; }
+}
