@@ -35,9 +35,9 @@ sed -i "s/const CACHE = '[^']*';/const CACHE = 'aquachord-$VER-$SHA';/" "$WEB/sw
 
 # cache-bust: เติม ?v=<sha> ให้ CSS/JS ทุกตัว — กัน Cloudflare/SW เสิร์ฟของเก่า
 # (Cloudflare cache static แต่ไม่ cache HTML → index.html สด → URL ใหม่ = โหลด CSS/JS สดเสมอ)
-sed -i -E "s#(assets/styles\.css)\"#\1?v=$SHA\"#g; s#(assets/js/[A-Za-z0-9_-]+\.js)\"#\1?v=$SHA\"#g" "$WEB/index.html"
+sed -i -E "s#(assets/[A-Za-z0-9_-]+\.css)\"#\1?v=$SHA\"#g; s#(assets/js/[A-Za-z0-9_-]+\.js)\"#\1?v=$SHA\"#g" "$WEB/index.html"
 sed -i "s#register('sw.js'#register('sw.js?v=$SHA'#" "$WEB/assets/js/app.js"
-sed -i -E "s#('\./assets/(styles\.css|js/[A-Za-z0-9_-]+\.js))'#\1?v=$SHA'#g" "$WEB/sw.js"
+sed -i -E "s#('\./assets/([A-Za-z0-9_-]+\.css|js/[A-Za-z0-9_-]+\.js))'#\1?v=$SHA'#g" "$WEB/sw.js"
 
 # cache-bust รูป (mascot/logo) ด้วย — ใช้ชื่อไฟล์เดิม Cloudflare จะ cache ของเก่า
 for f in "$WEB/index.html" "$WEB/assets/js/app.js"; do

@@ -60,6 +60,7 @@
 
       <section class="card reveal">
         <div class="ingest">
+          ${window.GPU ? GPU.chipHTML() : '' /* GPU: ชิปงานค้าง/เสร็จใหม่ (แอดมิน) */}
           <div class="ingest-tabs">
             <button class="ingest-tab active" data-mode="url">${t('ingest.url')}</button>
             <button class="ingest-tab" data-mode="file">${t('ingest.file')}</button>
@@ -75,6 +76,7 @@
               <div class="dz-file" id="dzFile" hidden></div>
             </div>
             <input type="file" id="fileInput" accept="audio/*,.mp3,.wav,.m4a,.flac,.ogg,.opus" hidden />
+            ${window.GPU ? GPU.slotHTML() : '' /* GPU: แผงโหมด AI เซิร์ฟเวอร์ (แอดมิน, เฉพาะไฟล์) */}
           </div>
           ${lyricsBoxHTML()}
           <button class="btn btn-block" id="startBtn">🎸 ${t('ingest.start')}</button>
@@ -198,15 +200,19 @@
       } else {
         if (!pickedFile) { toast(t('ingest.needInput')); return; }
         input = { kind: 'file', file: pickedFile };
+        if (window.GPU) input.gpu = GPU.ingestOptions(); // GPU: null = แกะในเครื่องตามเดิม
       }
       if (window.Lyrics && lyrPref.on) input.lyrics = { model: lyrPref.model, lang: lyrPref.lang };
       ensureCopyrightAccepted(() => startJob(input));
     });
+    if (window.GPU) GPU.mountIngest(view); // GPU: เติมแผงหลังโหลด /api/gpu/config
   }
 
   /* ---------------- Job progress (วิเคราะห์จริงในเครื่อง — analyze.js) ---------------- */
   let jobRunning = false;
   function startJob(input) {
+    // --- GPU mode (แอดมิน): ส่งไฟล์ไปถอดบนเซิร์ฟเวอร์ → หน้า #/job/<id> (gpu.js) ---
+    if (input.gpu && window.GPU) { GPU.startJob(view, input, { toast, route }); return; }
     if (jobRunning) return; // กันกดซ้ำระหว่างวิเคราะห์
     jobRunning = true;
     const controller = { aborted: false };
@@ -647,6 +653,9 @@
     else if (parts[0] === 'settings') { setTab('settings'); renderSettings(); }
     else if (parts[0] === 'song') { renderSong(parts[1]); }
     else if (parts[0] === 'edit') { renderEditor(parts[1]); }
+    // --- GPU mode: รายการงาน + หน้าความคืบหน้างาน (gpu.js) ---
+    else if (parts[0] === 'jobs' && window.GPU) { GPU.renderJobs(view); }
+    else if (parts[0] === 'job' && window.GPU) { GPU.renderJob(view, parts[1]); }
     else { setTab('home'); renderHome(); }
   }
   function setTab(name) {

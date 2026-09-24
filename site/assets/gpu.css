@@ -1,0 +1,111 @@
+/* gpu.css — โหมด AI เซิร์ฟเวอร์ (GPU) สำหรับแอดมิน: แผงหน้าแกะเพลง, หน้า #/job/<id>, หน้า #/jobs, การแจ้งเตือน
+   ใช้ตัวแปรสีจาก styles.css (ธีมสว่าง/มืดตามเดิม) */
+
+/* class ที่ตั้ง display เองจะชนะ attribute hidden — บังคับซ่อนเฉพาะส่วนของเรา */
+.gpu-slot [hidden], .gpu-job [hidden], .gpu-list [hidden], .lyr-box[hidden] { display: none !important; }
+
+/* ---------- แผงหน้าแกะเพลง ---------- */
+.gpu-slot { margin-top: 12px; }
+.gpu-slot:empty { display: none; }
+.gpu-box {
+  border: 1.5px solid rgba(124, 58, 237, 0.28); border-radius: 14px; padding: 12px 14px;
+  display: grid; gap: 10px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.07), rgba(34, 211, 238, 0.07));
+}
+.gpu-opts { display: grid; gap: 8px; }
+.chip-admin { background: rgba(124, 58, 237, 0.14); color: #6d28d9; }
+.gpu-lyrics-label { font-size: 0.8rem; font-weight: 600; color: var(--ink-soft); }
+.gpu-lyrics {
+  width: 100%; min-height: 92px; resize: vertical; box-sizing: border-box;
+  font-family: var(--font-body); font-size: 0.92rem; line-height: 1.6; color: var(--ink);
+  background: rgba(255, 255, 255, 0.75); border: 1.5px solid var(--line); border-radius: 10px;
+  padding: 9px 11px; outline: none;
+}
+.gpu-lyrics:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.14); }
+.gpu-hint { font-size: 0.75rem; line-height: 1.55; }
+.gpu-nc, .gpu-warn {
+  font-size: 0.78rem; line-height: 1.5; padding: 7px 10px; border-radius: 9px;
+  background: rgba(245, 158, 11, 0.14); border: 1px solid rgba(245, 158, 11, 0.35); color: #92600a;
+}
+.gpu-warn.soft { background: rgba(255, 255, 255, 0.45); border-color: var(--line); color: var(--ink-soft); }
+.gpu-list + .gpu-warn, .gpu-warn + .card { margin-top: 10px; }
+.gpu-mini { font-size: 0.8rem; padding: 4px 2px; }
+.gpu-link {
+  background: none; border: none; padding: 0; font: inherit; cursor: pointer;
+  color: var(--teal-deep); text-decoration: underline; text-underline-offset: 2px;
+}
+
+/* ---------- ชิปงานบนหน้าแรก ---------- */
+.gpu-chip-slot:empty { display: none; }
+.gpu-chip-slot { display: flex; justify-content: flex-end; }
+.gpu-chip { text-decoration: none; padding: 5px 11px; font-size: 0.76rem; background: rgba(124, 58, 237, 0.12); color: #6d28d9; }
+.gpu-chip.has-new { background: rgba(16, 185, 129, 0.16); color: var(--teal-deep); }
+.gpu-dot { width: 7px; height: 7px; border-radius: 50%; background: #a855f7; display: inline-block; animation: pulse 1.6s infinite; }
+
+/* ---------- หน้า job ---------- */
+.gpu-job-name { font-family: var(--font-display); font-weight: 500; color: var(--teal-ink); font-size: 1.05rem; word-break: break-word; }
+.gpu-stage { font-weight: 600; color: var(--ink); font-size: 0.98rem; min-height: 1.4em; }
+.gpu-meta { font-size: 0.85rem; color: var(--ink-soft); font-family: var(--font-body); min-height: 1.2em; }
+.gpu-note { font-size: 0.8rem; line-height: 1.6; display: grid; gap: 2px; }
+.gpu-err {
+  font-size: 0.85rem; line-height: 1.5; padding: 8px 12px; border-radius: 10px;
+  background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #b91c1c;
+}
+.gpu-err.soft { background: rgba(245, 158, 11, 0.12); border-color: rgba(245, 158, 11, 0.3); color: #92600a; }
+.gpu-actions { margin-top: 0; }
+.progress-bar.indeterminate { position: relative; }
+.progress-bar.indeterminate .progress-fill {
+  position: absolute; width: 35% !important; left: -35%;
+  animation: gpuIndet 1.4s var(--ease) infinite;
+}
+@keyframes gpuIndet { 0% { left: -35%; } 100% { left: 100%; } }
+
+/* ---------- หน้า #/jobs ---------- */
+.gpu-list { display: grid; gap: 4px; padding: 10px; }
+.gpu-item {
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  padding: 12px 10px; border-radius: 12px; border-bottom: 1px solid var(--line);
+}
+.gpu-item:last-child { border-bottom: none; }
+.gpu-item.is-new { background: rgba(16, 185, 129, 0.08); }
+.gpu-item-main { flex: 1 1 220px; min-width: 0; display: grid; gap: 4px; }
+.gpu-item-title { font-family: var(--font-display); font-weight: 500; color: var(--teal-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gpu-item-sub { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 0.78rem; color: var(--ink-faint); align-items: center; }
+.gpu-item-err { font-size: 0.78rem; color: #b91c1c; line-height: 1.45; }
+.gpu-item-actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.gpu-status { font-weight: 600; padding: 2px 8px; border-radius: 999px; background: rgba(124, 58, 237, 0.12); color: #6d28d9; }
+.gpu-status.s-completed { background: rgba(16, 185, 129, 0.16); color: var(--teal-deep); }
+.gpu-status.s-failed { background: rgba(239, 68, 68, 0.12); color: #b91c1c; }
+.gpu-status.s-cancelled { background: rgba(100, 116, 139, 0.14); color: var(--ink-soft); }
+.gpu-mini-bar { height: 6px; }
+.gpu-x { padding: 6px 10px; }
+
+/* ---------- การแจ้งเตือนในแอป ---------- */
+.gpu-notices {
+  position: fixed; z-index: 70; left: 50%; transform: translateX(-50%);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 12px);
+  width: min(520px, calc(100vw - 24px)); display: grid; gap: 8px; pointer-events: none;
+}
+.gpu-notice {
+  pointer-events: auto; display: flex; align-items: center; gap: 10px;
+  padding: 10px 10px 10px 14px; border-radius: 14px;
+  background: var(--glass-strong); -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+  border: 1px solid var(--glass-brd); box-shadow: 0 16px 40px -12px rgba(11, 125, 117, 0.5);
+  animation: reveal 0.35s var(--ease);
+}
+.gpu-notice-text { flex: 1; min-width: 0; font-size: 0.86rem; color: var(--ink); line-height: 1.45; word-break: break-word; }
+.gpu-notice-go { flex: none; text-decoration: none; }
+.gpu-notice-x { flex: none; border: none; background: none; cursor: pointer; font-size: 1.2rem; line-height: 1; color: var(--ink-faint); padding: 4px 6px; }
+@media (min-width: 900px) { .gpu-notices { bottom: 20px; } }
+
+/* ---------- ธีมมืด ---------- */
+html[data-theme="dark"] .gpu-box { border-color: rgba(192, 132, 252, 0.32); background: linear-gradient(135deg, rgba(168, 85, 247, 0.1), rgba(34, 211, 238, 0.06)); }
+html[data-theme="dark"] .gpu-lyrics { background: rgba(255, 255, 255, 0.06); border-color: rgba(120, 220, 205, 0.3); }
+html[data-theme="dark"] .chip-admin, html[data-theme="dark"] .gpu-chip, html[data-theme="dark"] .gpu-status { background: rgba(168, 85, 247, 0.22); color: #d8b4fe; }
+html[data-theme="dark"] .gpu-chip.has-new, html[data-theme="dark"] .gpu-status.s-completed { background: rgba(45, 212, 191, 0.16); color: var(--teal-deep); }
+html[data-theme="dark"] .gpu-status.s-failed { background: rgba(239, 68, 68, 0.2); color: #fca5a5; }
+html[data-theme="dark"] .gpu-nc, html[data-theme="dark"] .gpu-warn, html[data-theme="dark"] .gpu-err.soft { background: rgba(245, 158, 11, 0.16); border-color: rgba(245, 158, 11, 0.35); color: #fcd34d; }
+html[data-theme="dark"] .gpu-warn.soft { background: rgba(255, 255, 255, 0.05); border-color: rgba(120, 220, 205, 0.22); color: var(--ink-soft); }
+html[data-theme="dark"] .gpu-err { background: rgba(239, 68, 68, 0.14); border-color: rgba(239, 68, 68, 0.35); color: #fca5a5; }
+html[data-theme="dark"] .gpu-item-err { color: #fca5a5; }
+html[data-theme="dark"] .gpu-item.is-new { background: rgba(45, 212, 191, 0.08); }
