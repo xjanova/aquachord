@@ -204,7 +204,9 @@ Auth: header **`X-Aixman-Partner-Key`** → sha256 → เทียบ constant-
 
 ## 5. SongDoc v2 (อัปเดต docs/04 — `schemaVersion: 2`)
 
-เพิ่ม field (ทั้งหมด optional — เอกสาร v1 ยัง valid, store อัปเกรดเลขเวอร์ชันตอนอ่าน):
+เพิ่ม field (ทั้งหมด optional — เอกสาร v1 ยัง valid, store อัปเกรดเลขเวอร์ชันตอนอ่าน)
+**ต้องคง field ที่ v1.3.x ใช้อยู่จริงแม้ docs/04 เดิมไม่มี:** `timeline` (`[{t, chord}]`), `lyricsText`, `lyricsError`, `lyricsEmpty`, `tempo` (string) — ห้ามลบ/เปลี่ยนความหมาย
+ตัวถอดเนื้อในเบราว์เซอร์ (lyrics.js + Whisper tiny/base/small) คงไว้เป็นโหมดสำหรับผู้ใช้ทั่วไป — โหมด GPU เป็นของแอดมินในเฟสนี้:
 
 ```ts
 interface SongDoc {
