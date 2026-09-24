@@ -43,6 +43,8 @@ jobs:
         run: node tools/test-dsp.cjs
       - name: เทสต์ประกอบ ChordPro (คอร์ด+เนื้อร้อง)
         run: node tools/test-assemble.cjs
+      - name: เทสต์แปลงผลถอดเพลง GPU → SongDoc v2 (คอร์ดตรงพยางค์ไทย, ทำนอง, ข้อมูลเสีย)
+        run: node tools/test-transcription.cjs
       - name: ตรวจ JSON (manifest, version)
         run: |
           node -e "JSON.parse(require('fs').readFileSync('site/manifest.webmanifest','utf8'));console.log('manifest ok')"
