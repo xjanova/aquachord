@@ -1203,6 +1203,9 @@
     const offPen = opts.offBeatPenalty != null ? opts.offBeatPenalty : 0.4;
     const KEY_BONUS = opts.keyBonus != null ? opts.keyBonus : 0.5;
     const onBeat = opts.onBeat || null; // Uint8Array T: 1 = ช่องนี้เริ่มบน beat
+    // น้ำหนักหลักฐานต่อช่อง (≈ จำนวนเฟรมที่เฉลี่ยมา) — ช่องยาวต้องมีน้ำหนักมากกว่า
+    // ไม่งั้นโทษการเปลี่ยนคอร์ด (คิดต่อช่อง) จะชนะหลักฐานจนคอร์ดติดกันถูกรวบเป็นคอร์ดเดียว
+    const wts = opts.weights || null;
     const ip = opts.invPen != null ? opts.invPen : 0.2;
     const invPen = [0, -ip, -ip * 1.4, -ip * 1.4]; // โทษของ inversion: 3rd / 5th / 7th อยู่ที่เบส
     let maxE = 0;
@@ -1245,7 +1248,9 @@
     const bp = new Uint8Array(T * S);
     async function viterbi(bonus) {
       let dpPrev = new Float64Array(S), dpCur = new Float64Array(S);
-      const emit = (i, c) => BETA * Math.log(sims[i * S + c] + 1e-3) + prior[c] + (bonus ? bonus[c] : 0);
+      const emit = wts
+        ? (i, c) => wts[i] * (BETA * Math.log(sims[i * S + c] + 1e-3) + prior[c] + (bonus ? bonus[c] : 0))
+        : (i, c) => BETA * Math.log(sims[i * S + c] + 1e-3) + prior[c] + (bonus ? bonus[c] : 0);
       for (let c = 0; c < S; c++) dpPrev[c] = emit(0, c);
       for (let i = 1; i < T; i++) {
         let bi = 0;
@@ -1325,6 +1330,10 @@
     const en2 = syncToGrid(sp.rms, 1, sp.F, sp.frameSec, sp.t0, grid);
     const onBeat = new Uint8Array(T);
     for (let i = 0; i < T; i++) onBeat[i] = grid[i].onBeat ? 1 : 0;
+    // น้ำหนักหลักฐาน = ความยาวช่องเทียบเฟรมอ้างอิง ~0.093s (ยกกำลัง durPow: เฉลี่ยแล้ว noise ลด ไม่เป็นอิสระเต็มที่)
+    const refSec = o.refSec || 1024 / 11025, dPow = o.durPow != null ? o.durPow : 1;
+    const weights = new Float32Array(T);
+    for (let i = 0; i < T; i++) weights[i] = Math.pow(Math.max(0.02, grid[i + 1].t - grid[i].t) / refSec, dPow);
     chk(); await tick();
 
     // 4) HMM 2 รอบ: หา key จากรอบแรก → ให้โบนัสคอร์ดในคีย์
@@ -1345,7 +1354,7 @@
       dec = { path: d1.path, labels: d1.labels, C: d1.nChords, key: d1.key, confidence: d1.confidence };
     } else {
       const quals = o.vocab === 'basic' ? QV2.filter((q) => !q.ext) : QV2;
-      dec = await decodeSeq(tre2, bas2, en2, T, Object.assign({ onBeat, keyFn, tick, chk, qualities: quals }, o));
+      dec = await decodeSeq(tre2, bas2, en2, T, Object.assign({ onBeat, keyFn, tick, chk, qualities: quals, weights: o.durPow === 0 ? null : weights }, o));
     }
     stage('chords', 0.95);
 
