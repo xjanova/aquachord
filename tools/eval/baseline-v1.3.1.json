@@ -1,0 +1,257 @@
+{
+  "engine": "v1.3.1",
+  "avg": {
+    "root": 0.8603,
+    "majmin": 0.8539,
+    "majminInv": 0.8044,
+    "sevenths": 0.7052,
+    "tetrads": 0.6742,
+    "mirex": 0.8651,
+    "seg": 0.8844,
+    "key": 0.9167,
+    "beatF": 0.1339,
+    "tempo": 1
+  },
+  "results": [
+    {
+      "name": "pop-C-slash",
+      "ci": true,
+      "refKey": "C",
+      "estKey": "C",
+      "bpm": 99.9,
+      "metrics": {
+        "root": 0.8377,
+        "majmin": 0.847,
+        "majminInv": 0.7635,
+        "sevenths": 0.7591,
+        "tetrads": 0.7461,
+        "mirex": 0.8978,
+        "seg": 0.8628,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0.2254,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "ballad-Eb-modulate",
+      "ci": false,
+      "refKey": "Eb",
+      "estKey": "D#",
+      "bpm": 140.9,
+      "metrics": {
+        "root": 0.9067,
+        "majmin": 0.8922,
+        "majminInv": 0.8528,
+        "sevenths": 0.6667,
+        "tetrads": 0.6528,
+        "mirex": 0.9074,
+        "seg": 0.9104,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0.0879,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "lukthung-Am",
+      "ci": true,
+      "refKey": "Am",
+      "estKey": "Am",
+      "bpm": 128,
+      "metrics": {
+        "root": 0.9521,
+        "majmin": 0.9521,
+        "majminInv": 0.9521,
+        "sevenths": 0.884,
+        "tetrads": 0.884,
+        "mirex": 0.9521,
+        "seg": 0.9521,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "rock-G-sus",
+      "ci": false,
+      "refKey": "G",
+      "estKey": "G",
+      "bpm": 132,
+      "metrics": {
+        "root": 0.9038,
+        "majmin": 0.9233,
+        "majminInv": 0.7832,
+        "sevenths": 0.8551,
+        "tetrads": 0.7679,
+        "mirex": 0.8292,
+        "seg": 0.9115,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "jazz-Dm-7ths",
+      "ci": true,
+      "refKey": "Dm",
+      "estKey": "Dm",
+      "bpm": 110,
+      "metrics": {
+        "root": 0.7429,
+        "majmin": 0.8232,
+        "majminInv": 0.8155,
+        "sevenths": 0.6884,
+        "tetrads": 0.6064,
+        "mirex": 0.9132,
+        "seg": 0.8449,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "pop-D-keychange",
+      "ci": true,
+      "refKey": "D",
+      "estKey": "A",
+      "bpm": 115.9,
+      "metrics": {
+        "root": 0.8598,
+        "majmin": 0.8245,
+        "majminInv": 0.7498,
+        "sevenths": 0.7547,
+        "tetrads": 0.7417,
+        "mirex": 0.8275,
+        "seg": 0.8676,
+        "key": 0.5,
+        "keyExact": 0,
+        "beatF": 0.3697,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "ballad-F-dim-aug",
+      "ci": false,
+      "refKey": "F",
+      "estKey": "F",
+      "bpm": 153.6,
+      "metrics": {
+        "root": 0.8872,
+        "majmin": 0.7604,
+        "majminInv": 0.6995,
+        "sevenths": 0.6995,
+        "tetrads": 0.5869,
+        "mirex": 0.7429,
+        "seg": 0.8048,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0.2705,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "lukthung-G-phone",
+      "ci": true,
+      "refKey": "G",
+      "estKey": "G",
+      "bpm": 135.9,
+      "metrics": {
+        "root": 0.9041,
+        "majmin": 0.9195,
+        "majminInv": 0.9195,
+        "sevenths": 0.8856,
+        "tetrads": 0.8705,
+        "mirex": 0.9038,
+        "seg": 0.9143,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "pop-F#m-minor",
+      "ci": false,
+      "refKey": "F#m",
+      "estKey": "F#m",
+      "bpm": 92.1,
+      "metrics": {
+        "root": 0.7986,
+        "majmin": 0.8032,
+        "majminInv": 0.8032,
+        "sevenths": 0.7551,
+        "tetrads": 0.7291,
+        "mirex": 0.8176,
+        "seg": 0.8601,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0.4,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "blues-E-shuffle",
+      "ci": false,
+      "refKey": "E",
+      "estKey": "E",
+      "bpm": 104,
+      "metrics": {
+        "root": 0.9432,
+        "majmin": 0.9432,
+        "majminInv": 0.9432,
+        "sevenths": 0.1796,
+        "tetrads": 0.1796,
+        "mirex": 0.9671,
+        "seg": 0.9615,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "folk-Bb-capo",
+      "ci": true,
+      "refKey": "Bb",
+      "estKey": "F",
+      "bpm": 84,
+      "metrics": {
+        "root": 0.6978,
+        "majmin": 0.6686,
+        "majminInv": 0.4804,
+        "sevenths": 0.4768,
+        "tetrads": 0.4672,
+        "mirex": 0.7332,
+        "seg": 0.8022,
+        "key": 0.5,
+        "keyExact": 0,
+        "beatF": 0.2527,
+        "tempo": 1
+      }
+    },
+    {
+      "name": "edm-F#m-sidechain",
+      "ci": false,
+      "refKey": "F#m",
+      "estKey": "F#m",
+      "bpm": 124,
+      "metrics": {
+        "root": 0.8898,
+        "majmin": 0.8898,
+        "majminInv": 0.8898,
+        "sevenths": 0.8579,
+        "tetrads": 0.8579,
+        "mirex": 0.8898,
+        "seg": 0.9209,
+        "key": 1,
+        "keyExact": 1,
+        "beatF": 0,
+        "tempo": 1
+      }
+    }
+  ]
+}
