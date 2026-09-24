@@ -300,6 +300,11 @@
     listeners.forEach((fn) => fn(lang));
   }
 
+  // โมดูลอื่นเพิ่มคำแปลของตัวเองได้ (เช่น notation.js, gpu.js) — ไม่ต้องแก้ DICT ที่นี่
+  function extend(more) {
+    LANGS.forEach((l) => { if (more && more[l]) Object.assign(DICT[l], more[l]); });
+  }
+
   function toggle() { setLang(current === 'th' ? 'en' : 'th'); }
   function onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); }
   function get() { return current; }
@@ -307,5 +312,5 @@
   document.documentElement.setAttribute('lang', current);
   document.documentElement.setAttribute('data-lang', current);
 
-  window.I18N = { t, setLang, toggle, onChange, get, applyStatic, LANGS };
+  window.I18N = { t, setLang, toggle, onChange, get, applyStatic, extend, LANGS };
 })();
