@@ -32,6 +32,7 @@
   const ACC_SIGN = { '-2': '♭♭', '-1': '♭', '0': '', '1': '♯', '2': '♯♯' };
   const CHORD_RE = /^([A-G][#b]?)([A-Za-z0-9+#()°ø-]{0,12}?)(?:\/([A-G][#b]?))?$/;
   const TS_DEN = [1, 2, 4, 8, 16];
+  const AMB = 'amb';                 // สถานะ accidental ในห้องที่ "กำกวม" → ตัวถัดไปต้องเขียนเครื่องหมายเสมอ
 
   const mod = (n, m) => ((n % m) + m) % m;
   const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
@@ -379,6 +380,13 @@
     let barStart = Math.floor(startU / barU) * barU;
     let bIndex = 0;
     const tokens = [];
+    // โน้ตที่ถูกโยงต่อจากตัวก่อน (note.tie + เสียงเดียวกัน + ติดกันพอดี) — ต้องรู้ก่อนสร้างหัวโน้ต
+    // เพราะ abcjs นับหัวโน้ตที่ถูกโยงต่อเป็นชิ้นต่อ (ไม่นับ accidental ของมัน) เหมือนชิ้นที่แยกข้ามห้อง
+    const tiedIn = new Set();
+    for (let q = 0; q + 1 < notes.length; q++) {
+      const nt = notes[q], nx = notes[q + 1];
+      if (nt.tie && nt.p != null && nx.p === nt.p && nx.s === nt.e) tiedIn.add(nx);
+    }
     while (barStart < endU) {
       const bs = Math.max(barStart, startU), be = barStart + barU;
       const spans = []; // [a, b, noteObj|null]
@@ -427,9 +435,12 @@
             const sp = spell(nt.p, ki);
             const key = sp.li + ':' + sp.oct;
             const eff = key in barAcc ? barAcc[key] : ki.sig[LETTERS[sp.li]];
-            tk.acc = sp.acc !== eff;
+            tk.acc = eff === AMB || sp.acc !== eff;
             tk.accText = tk.acc ? ACC_ABC[sp.acc] : '';
-            barAcc[key] = sp.acc;
+            // ชิ้นที่โยงต่อมา (ไม่ใช่หัวโน้ตแรก) + เขียน accidental: ตามมาตรฐาน ABC มีผลถึงท้ายห้อง
+            // แต่ตัวเล่นเสียงของ abcjs ข้ามชิ้นที่โยงต่อ (ไม่นับ accidental ของมัน) → ตีความได้สองแบบ
+            // → บังคับให้โน้ตตัวอักษร/ช่วงเสียงเดียวกันตัวถัดไปในห้องเขียน accidental ชัด ๆ เสมอ
+            barAcc[key] = ((x !== nt.s || tiedIn.has(nt)) && tk.acc) ? AMB : sp.acc;
             tk.letter = abcLetter(sp);
             tk.sol = solMode ? (tk.first ? solfegeFor(nt.p, sp, doInfo) : '_') : null;
             if (x + len < nt.e) tk.tieNext = true; // ชิ้นกลางของโน้ตเดียวกัน (ข้ามห้อง/ถูกคอร์ดตัด)
@@ -444,12 +455,10 @@
       barStart += barU;
     }
 
-    // tie ระหว่างโน้ต (note.tie) → ผูกเฉพาะเมื่อโน้ตถัดไปติดกันและเสียงเดียวกัน
+    // tie ระหว่างโน้ต (note.tie) → ผูกหัวโน้ตสุดท้ายของตัวก่อนกับหัวแรกของตัวที่ถูกโยงต่อ
     const firstTok = new Map();
     tokens.forEach((tk, idx) => { if (tk.first && tk.i >= 0) firstTok.set(tk.i, idx); });
-    for (let q = 0; q < notes.length; q++) {
-      const nt = notes[q], nx = notes[q + 1];
-      if (!nt.tie || !nx || nt.p == null || nx.p !== nt.p || nx.s !== nt.e) continue;
+    for (const nx of tiedIn) {
       const nextIdx = firstTok.get(nx.i);
       if (nextIdx == null || nextIdx === 0) continue;
       tokens[nextIdx - 1].tieNext = true;
@@ -559,6 +568,20 @@
     return { abc: em.abc, noteMap: em.noteMap, key: ki.name, timeSig: ts, tempo, tokens, startU: 0, endU: bars.length * barU, barU, lines: em.lines, bars: rawBars.length, warnings: [] };
   }
 
+  // ชื่อคีย์จาก key object ของ abcjs ({root:'F', acc:'#'|'b'|'', mode:'m'|'Dor'|...}) → "F#m"
+  // โหมดอื่น (Dorian, Mixolydian ...) แทนด้วยคีย์เมเจอร์ที่มีเครื่องหมายประจำคีย์เท่ากัน
+  function keyNameFromAbc(k) {
+    if (!k || !k.root || k.root === 'none' || k.root === 'HP' || k.root === 'Hp') return 'C';
+    const acc = k.acc === '#' || k.acc === 'sharp' ? '#' : (k.acc === 'b' || k.acc === 'flat') ? 'b' : '';
+    const mode = String(k.mode || '').toLowerCase();
+    if (mode === '' || mode === 'maj' || mode === 'major' || mode === 'ion') return String(k.root).toUpperCase() + acc;
+    if (mode === 'm' || mode === 'min' || mode === 'minor' || mode === 'aeo') return String(k.root).toUpperCase() + acc + 'm';
+    let n = 0;
+    (k.accidentals || []).forEach((a) => { if (a.acc === 'sharp') n++; else if (a.acc === 'flat') n--; });
+    const hit = Object.keys(MAJOR_FIFTHS).find((x) => MAJOR_FIFTHS[x] === n);
+    return hit || 'C';
+  }
+
   /* ---------------- ABC (ที่ abcjs parse แล้ว) → melody ----------------
      ใช้ในแท็บ "ABC ขั้นสูง" (นำเข้า) — คิดเครื่องหมายประจำคีย์ + accidental ในห้อง (มีผลเฉพาะ octave เดียวกัน)
      tune = ABCJS.parseOnly(text)[0] · คืน {melody, warnings} */
@@ -585,9 +608,7 @@
         ts = normTimeSig([parseInt(st.meter.value[0].num, 10), parseInt(st.meter.value[0].den, 10)]);
       } else if (!ts && st.meter && st.meter.type === 'common_time') ts = [4, 4];
       else if (!ts && st.meter && st.meter.type === 'cut_time') ts = [2, 2];
-      if (st.key && !keyName) {
-        keyName = (st.key.root && st.key.root !== 'none' ? st.key.root + (st.key.acc === 'sharp' ? '#' : st.key.acc === 'flat' ? 'b' : '') : 'C') + (st.key.mode === 'm' ? 'm' : '');
-      }
+      if (st.key && !keyName) keyName = keyNameFromAbc(st.key);
       if (st.key) sig = sigFromKey(st.key);
       if (!sig) sig = sigFromKey(null);
       if (line.staff.length > 1 || (st.voices && st.voices.length > 1)) warnings.push('multi-voice');
@@ -619,8 +640,10 @@
           const key = li + ':' + oct;
           let acc;
           if (pt.accidental && pt.accidental in ACC_VAL) { acc = ACC_VAL[pt.accidental]; barAcc[key] = acc; }
+          else if (pendingTie && lastNote && lastNote._step === step) acc = lastNote._acc; // โน้ตที่โยงข้ามห้องโดยไม่เขียนเครื่องหมายซ้ำ = เสียงเดิม
           else acc = key in barAcc ? barAcc[key] : sig[L];
           note.p = clamp((oct + 1) * 12 + LETTER_PC[li] + acc, 0, 127);
+          note._step = step; note._acc = acc;
           if (pt.startTie) note.tie = true;
         }
         if (el.lyric && el.lyric[0]) {
@@ -652,7 +675,7 @@
     const barU = barUnits(ts);
     let pickupU = 0;
     if (firstBarLen !== null && firstBarLen < barU) pickupU = firstBarLen;
-    notes.forEach((n) => { n.t = (n._u - pickupU) / U; delete n._u; if (n.tie !== true) delete n.tie; });
+    notes.forEach((n) => { n.t = (n._u - pickupU) / U; delete n._u; delete n._step; delete n._acc; if (n.tie !== true) delete n.tie; });
     const melody = { name: 'ทำนองร้อง', timeSig: ts, keySig: keyName && parseKeyName(keyName) ? keyInfo(keyName).name : 'C', notes };
     if (tempo && tempo >= 20 && tempo <= 400) melody.tempo = tempo;
     if (pickupU) melody.pickup = pickupU / U;
