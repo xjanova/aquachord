@@ -25,8 +25,10 @@ const val = (f) => { const i = args.indexOf(f); return i >= 0 ? args[i + 1] : nu
 const CI_FLOOR = { root: 0.80, majmin: 0.77, sevenths: 0.55, tetrads: 0.52, mirex: 0.80, key: 0.80, seg: 0.78 };
 
 /* เรียกเอนจินแบบเดียวกับ analyze.js ทุกขั้น */
+// --tune '{"stay":0.85}' ส่งพารามิเตอร์ทดลองเข้า analyzeSong (ใช้ตอนจูน/ablation), --v1 บังคับใช้ pipeline เก่า
+const TUNE = val('--tune') ? JSON.parse(val('--tune')) : {};
 async function runEngine(x, sr) {
-  if (DSP.analyzeSong) return DSP.analyzeSong(x, sr, {});
+  if (DSP.analyzeSong && !flag('--v1')) return DSP.analyzeSong(x, sr, { tune: TUNE });
   // v1.3.x (ก่อนมี analyzeSong): ลำดับเดียวกับ analyze.js
   const seconds = x.length / sr;
   const { bpm, phase } = await DSP.detectTempo(x, sr);
@@ -39,9 +41,33 @@ async function runEngine(x, sr) {
   return { segs, key: dec.key, bpm, phase, beats, confidence: dec.confidence, tuningCents: ch.tuningCents };
 }
 
+// --cache <dir>: เก็บเสียงที่สังเคราะห์แล้วไว้ใช้ซ้ำตอนจูนเอนจิน (key = hash ของ spec + synth.cjs)
+function cachedRender(spec) {
+  const dir = val('--cache');
+  if (!dir) return renderSong(spec);
+  const crypto = require('crypto');
+  const h = crypto.createHash('sha1')
+    .update(JSON.stringify(spec))
+    .update(fs.readFileSync(path.join(__dirname, 'synth.cjs')))
+    .digest('hex').slice(0, 16);
+  const base = path.join(dir, spec.name + '-' + h);
+  if (fs.existsSync(base + '.json') && fs.existsSync(base + '.f32')) {
+    const meta = JSON.parse(fs.readFileSync(base + '.json', 'utf8'));
+    const b = fs.readFileSync(base + '.f32');
+    meta.x = new Float32Array(b.buffer, b.byteOffset, b.byteLength / 4);
+    return meta;
+  }
+  const song = renderSong(spec);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(base + '.f32', Buffer.from(song.x.buffer, song.x.byteOffset, song.x.byteLength));
+  const meta = Object.assign({}, song); delete meta.x;
+  fs.writeFileSync(base + '.json', JSON.stringify(meta));
+  return song;
+}
+
 async function evalSong(spec, opts) {
   const t0 = Date.now();
-  const song = renderSong(spec);
+  const song = cachedRender(spec);
   const tSynth = Date.now() - t0;
   const t1 = Date.now();
   const res = await runEngine(song.x, song.sr);

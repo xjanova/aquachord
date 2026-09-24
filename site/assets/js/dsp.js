@@ -785,10 +785,592 @@
     return blocks;
   }
 
+  /* =====================================================================
+     เอนจิน v2 (device-2) — pipeline ที่ analyze.js ใช้จริงผ่าน analyzeSong()
+     ฟังก์ชัน v1 ด้านบนยังอยู่ (เทสต์เทียบ legacy ใน tools/test-dsp.cjs ใช้)
+     เทคนิค (เขียนเองจากคำอธิบายในงานวิจัย ไม่ได้ port โค้ดใคร):
+     - beat tracker แบบ dynamic programming (Ellis 2007) บน log spectral flux
+     - semitone spectrogram จากยอดสเปกตรัม + ชดเชย tuning
+     - approximate note transcription ด้วย NNLS (แนวคิด Mauch & Dixon 2010) —
+       อธิบายฮาร์มอนิกของโน้ตแทนการพับ f/2 f/3 f/4 ที่ทำให้คอร์ดข้างเคียงรั่ว
+     - chroma เฉลี่ยตามจังหวะ (ครึ่ง beat) แล้วถอดด้วย HMM ที่รู้คีย์
+     - bass แบบรู้ inversion (C/E ไม่กลายเป็น Em) + คอร์ด sus/dim/aug/m7b5 ที่ต้องมีหลักฐานชัด
+     ===================================================================== */
+  const ENGINE_VERSION = 'device-2';
+  const midiHz = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+  /* ---------- onset envelope: log spectral flux (normalize ระดับเสียงก่อน) ---------- */
+  async function onsetEnvelope(x, sr, opts) {
+    opts = opts || {};
+    const tick = opts.tick || noTick, chk = opts.chk || noop, onPct = opts.onPct || noop;
+    const N = sr > 16000 ? 2048 : 1024, hop = N / 4;
+    const F = Math.floor((x.length - N) / hop) + 1;
+    if (F < 64) return null;
+    let e = 0, ne = 0;
+    for (let i = 0; i < x.length; i += 5) { e += x[i] * x[i]; ne++; }
+    const g = 1 / (Math.sqrt(e / (ne || 1)) || 1);
+    const fp = makeFFT(N), win = hann(N);
+    const re = new Float32Array(N), im = new Float32Array(N);
+    const K = Math.min(N / 2, Math.ceil((5000 * N) / sr));
+    const kLow = Math.max(2, Math.round((150 * N) / sr));
+    let prev = new Float32Array(K), cur = new Float32Array(K);
+    const env = new Float32Array(F), low = new Float32Array(F);
+    for (let f = 0; f < F; f++) {
+      const off = f * hop;
+      for (let i = 0; i < N; i++) { re[i] = x[off + i] * win[i] * g; im[i] = 0; }
+      fft(fp, re, im);
+      let s = 0, sl = 0;
+      for (let k = 1; k < K; k++) {
+        const m = Math.log(1 + Math.sqrt(re[k] * re[k] + im[k] * im[k]));
+        cur[k] = m;
+        const d = m - prev[k];
+        if (d > 0) { s += d; if (k <= kLow) sl += d; }
+      }
+      env[f] = f ? s : 0; low[f] = f ? sl : 0;
+      const t = prev; prev = cur; cur = t;
+      if ((f & 255) === 0) { chk(); onPct(f / F); await tick(); }
+    }
+    // high-pass (ลบค่าเฉลี่ยเคลื่อนที่ ~0.4s) + half-wave → เหลือเฉพาะจุดที่พุ่งขึ้นจริง
+    const fps = sr / hop;
+    const hw = Math.max(2, Math.round(0.2 * fps));
+    const hpass = (a) => {
+      const pre = new Float64Array(F + 1);
+      for (let i = 0; i < F; i++) pre[i + 1] = pre[i] + a[i];
+      const out = new Float32Array(F);
+      let sd = 0;
+      for (let i = 0; i < F; i++) {
+        const lo = Math.max(0, i - hw), hi = Math.min(F, i + hw + 1);
+        const v = a[i] - (pre[hi] - pre[lo]) / (hi - lo);
+        out[i] = v > 0 ? v : 0; sd += out[i] * out[i];
+      }
+      sd = Math.sqrt(sd / F) || 1;
+      for (let i = 0; i < F; i++) out[i] /= sd;
+      return out;
+    };
+    // เวลาของเฟรม = กึ่งกลางหน้าต่าง − ครึ่ง hop (flux พุ่งเมื่อ onset ผ่านกลางหน้าต่าง)
+    return { env: hpass(env), low: hpass(low), fps, t0: (N / 2 - hop / 2) / sr };
+  }
+
+  /* ---------- tempo (autocorrelation + prior) + beat tracking แบบ DP ---------- */
+  function trackBeats(on, duration, opts) {
+    opts = opts || {};
+    const env = on.env, fps = on.fps, F = env.length;
+    const bpmMin = 50, bpmMax = 210;
+    const lagMin = Math.max(2, Math.floor((60 * fps) / bpmMax));
+    const lagMax = Math.min(F - 2, Math.ceil((60 * fps) / bpmMin));
+    const acMax = Math.min(F - 2, lagMax * 2 + 2);
+    const ac = new Float64Array(acMax + 1);
+    for (let lag = 1; lag <= acMax; lag++) {
+      let s = 0;
+      for (let i = lag; i < F; i++) s += env[i] * env[i - lag];
+      ac[lag] = s / (F - lag);
+    }
+    const center = opts.tempoCenter || 115, sigma = opts.tempoSigma || 0.9;
+    let bestLag = lagMin, best = -Infinity;
+    for (let lag = lagMin; lag <= lagMax; lag++) {
+      const bpm = (60 * fps) / lag;
+      const w = Math.exp(-0.5 * Math.pow(Math.log2(bpm / center) / sigma, 2));
+      // โครงสร้างจังหวะ: beat จริงมักมีพลังที่ 2×lag ด้วย (ห้อง/จังหวะคู่)
+      const sc = w * (ac[lag] + 0.5 * (ac[2 * lag] || 0) + 0.25 * ((ac[Math.round(lag / 2)] || 0)));
+      if (sc > best) { best = sc; bestLag = lag; }
+    }
+    let period = bestLag;
+    if (bestLag > 1 && bestLag < acMax) {
+      const a = ac[bestLag - 1], b = ac[bestLag], c = ac[bestLag + 1];
+      const den = a - 2 * b + c;
+      if (den < 0) period = bestLag + Math.max(-0.5, Math.min(0.5, 0.5 * (a - c) / den));
+    }
+    // local score: onset เกลี่ยด้วย gaussian แคบ (σ ≈ period/16 เฟรม)
+    const sigmaF = Math.max(1, period / 16);
+    const gw = Math.max(1, Math.round(sigmaF * 3));
+    const kern = [];
+    for (let d = -gw; d <= gw; d++) kern.push(Math.exp(-0.5 * Math.pow(d / sigmaF, 2)));
+    const loc = new Float32Array(F);
+    let locMax = 0;
+    for (let i = 0; i < F; i++) {
+      let s = 0;
+      for (let d = -gw; d <= gw; d++) { const j = i + d; if (j >= 0 && j < F) s += env[j] * kern[d + gw]; }
+      loc[i] = s; if (s > locMax) locMax = s;
+    }
+    const tight = opts.tightness || 100;
+    const lo = Math.max(1, Math.round(period / 2)), hi = Math.max(lo + 1, Math.round(period * 2));
+    const pen = new Float64Array(hi + 1);
+    for (let d = lo; d <= hi; d++) pen[d] = -tight * Math.pow(Math.log(d / period), 2);
+    const cum = new Float64Array(F), back = new Int32Array(F);
+    let first = true;
+    for (let t = 0; t < F; t++) {
+      let bv = -Infinity, bi = -1;
+      for (let d = lo; d <= hi; d++) {
+        const p = t - d;
+        if (p < 0) break;
+        const v = cum[p] + pen[d];
+        if (v > bv) { bv = v; bi = p; }
+      }
+      if (bi < 0) { cum[t] = loc[t]; back[t] = -1; continue; }
+      cum[t] = loc[t] + bv;
+      if (first && loc[t] < 0.01 * locMax) back[t] = -1;
+      else { back[t] = bi; first = false; }
+    }
+    // beat สุดท้าย: local max ของ cumscore ตัวท้ายที่สูงเกินครึ่งของ median
+    const maxes = [];
+    for (let t = 1; t < F - 1; t++) if (cum[t] > cum[t - 1] && cum[t] >= cum[t + 1]) maxes.push(t);
+    let last = F - 1;
+    if (maxes.length) {
+      const vals = maxes.map((t) => cum[t]).sort((a, b) => a - b);
+      const med = vals[vals.length >> 1];
+      for (let i = maxes.length - 1; i >= 0; i--) if (cum[maxes[i]] * 2 > med) { last = maxes[i]; break; }
+    }
+    const idx = [];
+    for (let t = last; t >= 0; t = back[t]) { idx.push(t); if (back[t] < 0) break; }
+    idx.reverse();
+    // ตัด beat หัว/ท้ายที่ onset อ่อนมาก (ช่วงเงียบ)
+    let smRms = 0;
+    for (let i = 0; i < F; i++) smRms += loc[i] * loc[i];
+    const thr = 0.5 * Math.sqrt(smRms / F);
+    let a = 0, b = idx.length;
+    while (a < b && loc[idx[a]] < thr) a++;
+    while (b > a && loc[idx[b - 1]] < thr) b--;
+    const beats = idx.slice(a, b).map((i) => on.t0 + i / fps);
+    let bpm = (60 * fps) / period;
+    if (beats.length > 8) {
+      const d = [];
+      for (let i = 1; i < beats.length; i++) d.push(beats[i] - beats[i - 1]);
+      d.sort((p, q) => p - q);
+      bpm = 60 / d[d.length >> 1];
+    }
+    return { bpm, beats };
+  }
+
+  // กริด "ครึ่ง beat" ครอบทั้งเพลง [0, duration] — ต่อหัว/ท้ายด้วยคาบของ beat
+  function tatumGrid(beats, bpm, duration, sub) {
+    sub = sub || 2;
+    const P = 60 / bpm;
+    let bs = beats.slice();
+    if (bs.length < 2) { bs = []; for (let t = 0; t < duration; t += P) bs.push(t); }
+    const pre = [];
+    for (let t = bs[0] - P; t > -P * 0.5; t -= P) pre.unshift(Math.max(0, t));
+    const post = [];
+    for (let t = bs[bs.length - 1] + P; t < duration + P * 0.5; t += P) post.push(t);
+    const all = pre.concat(bs, post).filter((t, i, arr) => i === 0 || t > arr[i - 1] + 1e-3);
+    const grid = [];
+    for (let i = 0; i + 1 < all.length; i++) {
+      for (let k = 0; k < sub; k++) grid.push({ t: all[i] + ((all[i + 1] - all[i]) * k) / sub, onBeat: k === 0, beat: i });
+    }
+    grid.push({ t: all[all.length - 1], onBeat: true, beat: all.length - 1 });
+    if (grid[0].t > 0) grid.unshift({ t: 0, onBeat: false, beat: -1 });
+    const out = grid.filter((g) => g.t < duration);
+    out.push({ t: duration, onBeat: true, beat: -1, end: true });
+    return out;
+  }
+
+  /* ---------- semitone spectrogram + tuning ---------- */
+  const NLO = 32, NHI = 102, NB = NHI - NLO + 1;       // ช่องสเปกตรัม (MIDI G#1..F#7)
+  const NOTE_LO = 32, NOTE_HI = 90, NN = NOTE_HI - NOTE_LO + 1; // โน้ตที่ให้ NNLS อธิบาย
+
+  async function noteSpectrogram(x, sr, opts) {
+    opts = opts || {};
+    const tick = opts.tick || noTick, chk = opts.chk || noop, onPct = opts.onPct || noop;
+    const N = opts.fftN || (sr > 16000 ? 16384 : 8192);
+    const HOP = opts.hop || N / 8;
+    const F = Math.floor((x.length - N) / HOP) + 1;
+    if (F < 8) { const e = new Error('short'); e.code = 'short'; throw e; }
+    const fp = makeFFT(N), win = hann(N);
+    const re = new Float32Array(N), im = new Float32Array(N);
+    const binHz = sr / N;
+    const kMin = Math.max(2, Math.floor(midiHz(NLO - 0.7) / binHz));
+    const kMax = Math.min(N / 2 - 2, Math.ceil(midiHz(NHI + 0.7) / binHz));
+    const mag = new Float32Array(kMax + 2);
+    const pre = new Float64Array(kMax + 3);
+    const AVG_W = 14;
+    const framePeaks = new Array(F);
+    const rms = new Float32Array(F);
+    let tunC = 0, tunS = 0;
+    for (let fr = 0; fr < F; fr++) {
+      const off = fr * HOP;
+      let e = 0;
+      for (let i = 0; i < N; i++) { const v = x[off + i] * win[i]; re[i] = v; im[i] = 0; e += v * v; }
+      rms[fr] = Math.sqrt(e / N);
+      fft(fp, re, im);
+      for (let k = kMin - 1; k <= kMax + 1; k++) mag[k] = Math.sqrt(re[k] * re[k] + im[k] * im[k]);
+      pre[kMin - 1] = 0;
+      for (let k = kMin - 1; k <= kMax + 1; k++) pre[k + 1] = pre[k] + mag[k];
+      const peaks = [];
+      for (let k = kMin; k <= kMax; k++) {
+        const m = mag[k];
+        if (m <= mag[k - 1] || m < mag[k + 1] || m <= 1e-6) continue;
+        const a0 = Math.max(kMin - 1, k - AVG_W), b0 = Math.min(kMax + 1, k + AVG_W);
+        const local = (pre[b0 + 1] - pre[a0]) / (b0 - a0 + 1);
+        if (m < local * 1.7) continue;
+        const am = mag[k - 1], cm = mag[k + 1];
+        const den = am - 2 * m + cm;
+        const d = den !== 0 ? Math.max(-0.5, Math.min(0.5, 0.5 * (am - cm) / den)) : 0;
+        const midi = 69 + 12 * Math.log2(((k + d) * binHz) / 440);
+        peaks.push(midi, m);
+        const dev = midi - Math.round(midi), w = Math.sqrt(m);
+        tunC += w * Math.cos(2 * Math.PI * dev);
+        tunS += w * Math.sin(2 * Math.PI * dev);
+      }
+      framePeaks[fr] = peaks;
+      if ((fr & 31) === 0) { chk(); onPct((fr / F) * 0.9); await tick(); }
+    }
+    const tuning = Math.atan2(tunS, tunC) / (2 * Math.PI);
+    const S = new Float32Array(F * NB);
+    for (let fr = 0; fr < F; fr++) {
+      const peaks = framePeaks[fr], base = fr * NB;
+      for (let i = 0; i < peaks.length; i += 2) {
+        const pos = peaks[i] - tuning - NLO;
+        if (pos < -0.5 || pos > NB - 0.5) continue;
+        const i0 = Math.floor(pos), f = pos - i0, m = peaks[i + 1];
+        if (i0 >= 0) S[base + i0] += m * (1 - f);
+        if (i0 + 1 < NB) S[base + i0 + 1] += m * f;
+      }
+      framePeaks[fr] = null;
+    }
+    onPct(1);
+    return { S, F, rms, frameSec: HOP / sr, t0: N / 2 / sr, tuningCents: Math.round(tuning * 100) };
+  }
+
+  /* ---------- NNLS: สเปกตรัม = Σ activation × template ฮาร์มอนิกของโน้ต ---------- */
+  let nnlsDictCache = null;
+  function noteDict(s) {
+    if (nnlsDictCache && nnlsDictCache.s === s) return nnlsDictCache;
+    const cols = []; // sparse: [idx[], w[]]
+    const dense = [];
+    for (let n = NOTE_LO; n <= NOTE_HI; n++) {
+      const col = new Float64Array(NB);
+      for (let h = 1; h <= 24; h++) {
+        const p = n + 12 * Math.log2(h) - NLO;
+        if (p > NB - 1) break;
+        const i0 = Math.floor(p), f = p - i0, a = Math.pow(s, h - 1);
+        col[i0] += a * (1 - f);
+        if (f > 0 && i0 + 1 < NB) col[i0 + 1] += a * f;
+      }
+      dense.push(col);
+      const idx = [], w = [];
+      for (let i = 0; i < NB; i++) if (col[i] > 1e-6) { idx.push(i); w.push(col[i]); }
+      cols.push({ idx: Int16Array.from(idx), w: Float64Array.from(w) });
+    }
+    const G = new Float64Array(NN * NN);
+    for (let a = 0; a < NN; a++) {
+      for (let b = a; b < NN; b++) {
+        let s2 = 0;
+        for (let i = 0; i < NB; i++) s2 += dense[a][i] * dense[b][i];
+        G[a * NN + b] = s2; G[b * NN + a] = s2;
+      }
+    }
+    nnlsDictCache = { s, cols, G };
+    return nnlsDictCache;
+  }
+
+  // coordinate-descent NNLS ต่อเฟรม (warm start จากเฟรมก่อน — เพลงต่อเนื่อง ลู่เข้าเร็ว)
+  async function nnlsNotes(S, F, opts) {
+    opts = opts || {};
+    const tick = opts.tick || noTick, chk = opts.chk || noop;
+    const { cols, G } = noteDict(opts.shape || 0.7);
+    const sweeps = opts.sweeps || 12;
+    const A = new Float32Array(F * NN);
+    const a = new Float64Array(NN), b = new Float64Array(NN), g = new Float64Array(NN);
+    for (let fr = 0; fr < F; fr++) {
+      const base = fr * NB;
+      let any = 0;
+      for (let j = 0; j < NN; j++) {
+        const c = cols[j];
+        let s = 0;
+        for (let k = 0; k < c.idx.length; k++) s += c.w[k] * S[base + c.idx[k]];
+        b[j] = s; any += s;
+      }
+      if (any <= 1e-9) { a.fill(0); continue; }
+      // g = G a − b
+      for (let j = 0; j < NN; j++) {
+        let s = -b[j];
+        const row = j * NN;
+        for (let k = 0; k < NN; k++) if (a[k]) s += G[row + k] * a[k];
+        g[j] = s;
+      }
+      for (let it = 0; it < sweeps; it++) {
+        let moved = 0;
+        for (let j = 0; j < NN; j++) {
+          const gjj = G[j * NN + j];
+          let aj = a[j] - g[j] / gjj;
+          if (aj < 0) aj = 0;
+          const d = aj - a[j];
+          if (d !== 0) {
+            a[j] = aj; moved += Math.abs(d);
+            for (let k = 0; k < NN; k++) g[k] += d * G[k * NN + j];
+          }
+        }
+        if (moved < 1e-7 * any) break;
+      }
+      const ob = fr * NN;
+      for (let j = 0; j < NN; j++) A[ob + j] = a[j];
+      if ((fr & 63) === 0) { chk(); await tick(); }
+    }
+    return A;
+  }
+
+  // activation → chroma (treble) + bass chroma ต่อเฟรม
+  function notesToChroma(A, F, opts) {
+    opts = opts || {};
+    const tre = new Float32Array(F * 12), bas = new Float32Array(F * 12);
+    const wT = new Float32Array(NN), wB = new Float32Array(NN);
+    const hiStart = opts.treHi || 84, hiW = opts.treHiW || 10;
+    const bassTop = opts.bassTop || 47;
+    const pw = opts.compress || 1;
+    for (let j = 0; j < NN; j++) {
+      const n = NOTE_LO + j;
+      wT[j] = n < 40 ? 0.5 + 0.5 * ((n - NOTE_LO) / 8) : (n > hiStart ? Math.max(0.2, 1 - (n - hiStart) / hiW) : 1);
+      wB[j] = n <= bassTop ? 1 : Math.max(0, 1 - (n - bassTop) / 10);
+    }
+    for (let f = 0; f < F; f++) {
+      const ob = f * NN, cb = f * 12;
+      for (let j = 0; j < NN; j++) {
+        let v = A[ob + j];
+        if (!v) continue;
+        if (pw !== 1) v = Math.pow(v, pw);
+        const pc = (NOTE_LO + j) % 12;
+        tre[cb + pc] += v * wT[j];
+        bas[cb + pc] += v * wB[j];
+      }
+    }
+    return { tre, bas };
+  }
+
+  // เฉลี่ยฟีเจอร์รายเฟรมลงช่วง grid (เฟรมที่กึ่งกลางอยู่ในช่วง; ไม่มีเลยใช้เฟรมใกล้สุด)
+  function syncToGrid(feat, dim, F, frameSec, t0, grid) {
+    const T = grid.length - 1;
+    const out = new Float32Array(T * dim);
+    for (let i = 0; i < T; i++) {
+      const a = grid[i].t, b = grid[i + 1].t;
+      let f0 = Math.ceil((a - t0) / frameSec), f1 = Math.ceil((b - t0) / frameSec) - 1;
+      f0 = Math.max(0, f0); f1 = Math.min(F - 1, f1);
+      if (f1 < f0) { const fc = Math.max(0, Math.min(F - 1, Math.round(((a + b) / 2 - t0) / frameSec))); f0 = f1 = fc; }
+      const n = f1 - f0 + 1;
+      for (let f = f0; f <= f1; f++) for (let k = 0; k < dim; k++) out[i * dim + k] += feat[f * dim + k] / n;
+    }
+    return out;
+  }
+
+  /* ---------- ศัพท์คอร์ด v2 + HMM ---------- */
+  // bass: ช่วงเสียงที่ยอมให้อยู่ที่เบส (inversion) + prior ลบ (root ไม่มีโทษ)
+  const QV2 = [
+    { suf: '',     iv: [0, 4, 7],     w: [1, 1, 0.85],        prior: 0 },
+    { suf: 'm',    iv: [0, 3, 7],     w: [1, 1, 0.85],        prior: 0 },
+    { suf: '7',    iv: [0, 4, 7, 10], w: [1, 1, 0.8, 0.85],   prior: -0.1 },
+    { suf: 'm7',   iv: [0, 3, 7, 10], w: [1, 1, 0.8, 0.85],   prior: -0.1 },
+    { suf: 'maj7', iv: [0, 4, 7, 11], w: [1, 1, 0.8, 0.85],   prior: -0.1 },
+    { suf: 'sus4', iv: [0, 5, 7],     w: [1, 1, 0.85],        prior: -0.35, ext: true },
+    { suf: 'sus2', iv: [0, 2, 7],     w: [1, 1, 0.85],        prior: -0.45, ext: true },
+    { suf: 'dim',  iv: [0, 3, 6],     w: [1, 1, 1],           prior: -0.4, ext: true },
+    { suf: 'aug',  iv: [0, 4, 8],     w: [1, 1, 1],           prior: -0.5, ext: true },
+    { suf: 'm7b5', iv: [0, 3, 6, 10], w: [1, 1, 1, 0.85],     prior: -0.3, ext: true },
+  ];
+
+  function buildV2(qualities) {
+    const labels = [], tpl = [], meta = [];
+    for (let r = 0; r < 12; r++) {
+      qualities.forEach((Q, q) => {
+        const t = new Float32Array(12);
+        Q.iv.forEach((iv, i) => { t[mod12(r + iv)] += Q.w[i]; });
+        labels.push(SHARP[r] + Q.suf);
+        tpl.push(l2norm(t));
+        meta.push({ root: r, q, bassPcs: Q.iv.map((iv) => mod12(r + iv)) });
+      });
+    }
+    return { labels, tpl, meta };
+  }
+
+  // diatonic ของคีย์ในรูปชุด (root, suffix) — รวม sus/7sus ของ V และ vii° ของเมเจอร์
+  function diatonicV2(key) {
+    const set = diatonicLabels(key);
+    const m = /^([A-G]#?)(m?)$/.exec(key || '');
+    if (!m) return set;
+    const r = SHARP.indexOf(m[1]);
+    const add = (off, suf) => set.add(SHARP[mod12(r + off)] + suf);
+    if (!m[2]) { add(11, 'dim'); add(11, 'm7b5'); add(7, 'sus4'); add(2, 'sus4'); add(0, 'sus4'); add(5, 'sus2'); add(0, 'sus2'); }
+    else { add(2, 'dim'); add(2, 'm7b5'); add(7, 'sus4'); add(0, 'sus4'); add(11, 'dim'); }
+    return set;
+  }
+
+  async function decodeSeq(tre, bas, energy, T, opts) {
+    opts = opts || {};
+    const tick = opts.tick || noTick, chk = opts.chk || noop;
+    const quals = opts.qualities || QV2;
+    const { labels, tpl, meta } = buildV2(quals);
+    const C = labels.length, S = C + 1;
+    const BETA = opts.beta || 4;
+    const bassW = opts.bassWeight != null ? opts.bassWeight : 0.3;
+    const STAY = opts.stay != null ? opts.stay : 0.8;
+    const offPen = opts.offBeatPenalty != null ? opts.offBeatPenalty : 0.4;
+    const KEY_BONUS = opts.keyBonus != null ? opts.keyBonus : 0.5;
+    const onBeat = opts.onBeat || null; // Uint8Array T: 1 = ช่องนี้เริ่มบน beat
+    const ip = opts.invPen != null ? opts.invPen : 0.2;
+    const invPen = [0, -ip, -ip * 1.4, -ip * 1.4]; // โทษของ inversion: 3rd / 5th / 7th อยู่ที่เบส
+    let maxE = 0;
+    for (let i = 0; i < T; i++) if (energy[i] > maxE) maxE = energy[i];
+    const silentThr = Math.max(1e-6, maxE * 0.02);
+    const sims = new Float32Array(T * S);
+    const bassArg = new Uint8Array(T * C); // index ของ iv ที่ชนะที่เบส (0 = root)
+    const cn = new Float32Array(12), bn = new Float32Array(12);
+    for (let i = 0; i < T; i++) {
+      let s = 0, sb = 0;
+      for (let k = 0; k < 12; k++) { cn[k] = tre[i * 12 + k]; s += cn[k] * cn[k]; bn[k] = bas[i * 12 + k]; sb += bn[k] * bn[k]; }
+      s = Math.sqrt(s); sb = Math.sqrt(sb);
+      const silent = energy[i] < silentThr || s < 1e-9;
+      const row = i * S;
+      if (silent) { sims[row + C] = 0.7; continue; }
+      // สัดส่วนพลังเบส: เบสเบามาก (เพลงไม่มีเบส) → ลดน้ำหนักเบสลง
+      const bw = sb > 1e-9 ? bassW : 0;
+      for (let c = 0; c < C; c++) {
+        const t = tpl[c];
+        let d = 0;
+        for (let k = 0; k < 12; k++) d += (cn[k] / s) * t[k];
+        if (bw) {
+          const bp = meta[c].bassPcs;
+          let bestB = -1, arg = 0;
+          const nb = opts.bassInv === false ? 1 : bp.length;
+          for (let j = 0; j < nb; j++) {
+            const v = bn[bp[j]] / sb + invPen[j];
+            if (v > bestB) { bestB = v; arg = j; }
+          }
+          bassArg[i * C + c] = arg;
+          d = (1 - bw) * d + bw * Math.max(0, bestB);
+        }
+        sims[row + c] = d > 0 ? d : 0;
+      }
+      sims[row + C] = 0.2;
+    }
+    const prior = new Float32Array(S);
+    for (let c = 0; c < C; c++) prior[c] = quals[meta[c].q].prior;
+    const logStay = Math.log(STAY), logSwitch = Math.log((1 - STAY) / (S - 1));
+    const bp = new Uint8Array(T * S);
+    async function viterbi(bonus) {
+      let dpPrev = new Float64Array(S), dpCur = new Float64Array(S);
+      const emit = (i, c) => BETA * Math.log(sims[i * S + c] + 1e-3) + prior[c] + (bonus ? bonus[c] : 0);
+      for (let c = 0; c < S; c++) dpPrev[c] = emit(0, c);
+      for (let i = 1; i < T; i++) {
+        let bi = 0;
+        for (let c = 1; c < S; c++) if (dpPrev[c] > dpPrev[bi]) bi = c;
+        const sw0 = logSwitch - (onBeat && !onBeat[i] ? offPen : 0);
+        const row = i * S;
+        for (let c = 0; c < S; c++) {
+          let best = dpPrev[c] + logStay, from = c;
+          const sw = dpPrev[bi] + sw0;
+          if (bi !== c && sw > best) { best = sw; from = bi; }
+          dpCur[c] = best + emit(i, c);
+          bp[row + c] = from;
+        }
+        const t = dpPrev; dpPrev = dpCur; dpCur = t;
+        if ((i & 511) === 0) { chk(); await tick(); }
+      }
+      const path = new Uint8Array(T);
+      let cur = 0;
+      for (let c = 1; c < S; c++) if (dpPrev[c] > dpPrev[cur]) cur = c;
+      for (let i = T - 1; i >= 0; i--) { path[i] = cur; cur = bp[i * S + cur]; }
+      return path;
+    }
+    let path = await viterbi(null);
+    let key = opts.key || null;
+    if (!key && opts.keyFn) key = opts.keyFn(path, labels, C);
+    if (key && KEY_BONUS) {
+      const dia = diatonicV2(key);
+      const bonus = new Float32Array(S);
+      for (let c = 0; c < C; c++) if (dia.has(labels[c])) bonus[c] = KEY_BONUS;
+      path = await viterbi(bonus);
+    }
+    let confSum = 0, confN = 0;
+    for (let i = 0; i < T; i++) if (path[i] < C) { confSum += sims[i * S + path[i]]; confN++; }
+    return { path, labels, meta, C, key, bassArg, confidence: confN ? Math.round((confSum / confN) * 100) / 100 : 0 };
+  }
+
+  /* ---------- pipeline เต็ม: เสียง mono → คอร์ด/คีย์/beat ---------- */
+  async function analyzeSong(x, sr, opts) {
+    opts = opts || {};
+    const tick = opts.tick || noTick, chk = opts.chk || noop;
+    const stage = opts.onStage || noop; // (stage, frac) — 'beats' | 'chords'
+    const duration = x.length / sr;
+    const o = Object.assign({}, opts.tune || {});
+    const P = (st, a, b) => ({ tick, chk, onPct: (p) => stage(st, a + p * (b - a)) });
+
+    // 1) beat
+    const on = await onsetEnvelope(x, sr, P('beats', 0, 0.9));
+    let bt = on ? trackBeats(on, duration, o) : { bpm: 100, beats: [] };
+    if (!(bt.bpm > 30 && bt.bpm < 260)) bt = { bpm: 100, beats: [] };
+    stage('beats', 1);
+
+    // 2) spectrogram → NNLS → chroma
+    const hop = o.hop || (duration > 420 ? 2048 : 1024);
+    let sp, tre, bas;
+    if (o.front === 'v1') {
+      const ch = await analyzeChroma(x, sr, Object.assign({ hop, fftN: o.fftN }, P('chords', 0, 0.7)));
+      sp = { F: ch.F, rms: ch.rms, frameSec: ch.frameSec, t0: ch.t0, tuningCents: ch.tuningCents };
+      tre = ch.chroma; bas = ch.bass;
+    } else {
+      sp = await noteSpectrogram(x, sr, Object.assign({ hop, fftN: o.fftN }, P('chords', 0, 0.45)));
+      chk();
+      const A = await nnlsNotes(sp.S, sp.F, Object.assign({ shape: o.shape, sweeps: o.sweeps }, P('chords', 0.45, 0.7)));
+      ({ tre, bas } = notesToChroma(A, sp.F, o));
+    }
+    stage('chords', 0.7);
+
+    // 3) เฉลี่ยตามกริดครึ่ง beat (หรือรายเฟรม ถ้าตั้ง grid:'frame')
+    let grid;
+    if (o.grid === 'frame') {
+      grid = [{ t: 0, onBeat: true }];
+      for (let f = 1; f < sp.F; f++) grid.push({ t: sp.t0 + (f - 0.5) * sp.frameSec, onBeat: true });
+      grid.push({ t: duration, onBeat: true, end: true });
+    } else grid = tatumGrid(bt.beats, bt.bpm, duration, o.grid === 'beat' ? 1 : (o.sub || 2));
+    const T = grid.length - 1;
+    const tre2 = syncToGrid(tre, 12, sp.F, sp.frameSec, sp.t0, grid);
+    const bas2 = syncToGrid(bas, 12, sp.F, sp.frameSec, sp.t0, grid);
+    const en2 = syncToGrid(sp.rms, 1, sp.F, sp.frameSec, sp.t0, grid);
+    const onBeat = new Uint8Array(T);
+    for (let i = 0; i < T; i++) onBeat[i] = grid[i].onBeat ? 1 : 0;
+    chk(); await tick();
+
+    // 4) HMM 2 รอบ: หา key จากรอบแรก → ให้โบนัสคอร์ดในคีย์
+    const keyFn = (path, labels, C) => {
+      const segs0 = [];
+      for (let i = 0; i < T; i++) {
+        const ch = path[i] < C ? labels[path[i]] : null;
+        const t0 = grid[i].t, t1 = grid[i + 1].t;
+        if (segs0.length && segs0[segs0.length - 1].chord === ch) segs0[segs0.length - 1].t1 = t1;
+        else segs0.push({ chord: ch, t0, t1 });
+      }
+      const k = detectKey(tre2, T);
+      return refineKeyWithChords(k, segs0.map((s) => ({ chord: s.chord ? s.chord.replace(/(sus4|sus2|dim|aug|m7b5)$/, (q) => (q === 'dim' || q === 'm7b5' ? 'm' : '')) : null, t0: s.t0, t1: s.t1 })));
+    };
+    let dec;
+    if (o.decoder === 'v1') {
+      const d1 = await decodeChords(tre2, bas2, en2, T, Object.assign({ frameSec: T ? duration / T : 0.1, tick, chk }, o.v1 || {}));
+      dec = { path: d1.path, labels: d1.labels, C: d1.nChords, key: d1.key, confidence: d1.confidence };
+    } else {
+      const quals = o.vocab === 'basic' ? QV2.filter((q) => !q.ext) : QV2;
+      dec = await decodeSeq(tre2, bas2, en2, T, Object.assign({ onBeat, keyFn, tick, chk, qualities: quals }, o));
+    }
+    stage('chords', 0.95);
+
+    // 5) segment (วินาที) + รวมช่วงสั้น
+    const raw = [];
+    for (let i = 0; i < T; i++) {
+      const ch = dec.path[i] < dec.C ? dec.labels[dec.path[i]] : null;
+      const t0 = grid[i].t, t1 = grid[i + 1].t;
+      if (raw.length && raw[raw.length - 1].chord === ch) raw[raw.length - 1].t1 = t1;
+      else raw.push({ chord: ch, t0, t1 });
+    }
+    const segs = raw;
+    stage('chords', 1);
+    return {
+      engine: ENGINE_VERSION,
+      segs, key: dec.key, confidence: dec.confidence, tuningCents: sp.tuningCents,
+      bpm: bt.bpm, beats: bt.beats, phase: bt.beats.length ? bt.beats[0] : 0, durationSec: duration,
+    };
+  }
+
   return {
-    SHARP, QUALITIES,
+    SHARP, QUALITIES, ENGINE_VERSION,
     makeFFT, fft, hann,
     detectTempo, analyzeChroma, decodeChords, toSegments,
+    onsetEnvelope, trackBeats, noteSpectrogram, nnlsNotes, notesToChroma, decodeSeq, analyzeSong,
     isolateCenter, prepForASR,
     detectKey, refineKeyWithChords, diatonicLabels,
     gridRows, chordAt, graphemes, cleanChunks, layoutLyricLines,
