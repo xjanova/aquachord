@@ -26,7 +26,40 @@
       delAdmin: 'ลบผู้ดูแลคนนี้?', settings: 'ตั้งค่าเว็บไซต์',
       siteName: 'ชื่อเว็บไซต์', copyrightEmail: 'อีเมลแจ้งลิขสิทธิ์', enableUrl: 'เปิดให้แกะเพลงจากลิงก์ URL',
       annTh: 'ประกาศ (ไทย)', annEn: 'ประกาศ (อังกฤษ)', saved: 'บันทึกแล้ว', added: 'เพิ่มแล้ว', deleted: 'ลบแล้ว',
-      required: 'กรุณากรอกข้อมูลให้ครบ', confirm: 'ยืนยัน',
+      required: 'กรุณากรอกข้อมูลให้ครบ', confirm: 'ยืนยัน', refresh: 'รีเฟรช',
+      // GPU / AI เซิร์ฟเวอร์ (docs/09)
+      tabGpu: 'GPU / AI', gpuTitle: 'GPU / AI เซิร์ฟเวอร์',
+      gpuIntro: 'เชื่อม AquaChord กับระบบเช่า GPU ของ aixman เพื่อถอดคอร์ด เนื้อร้องไทย และทำนองด้วยโมเดลใหญ่ — เฟสนี้ใช้ได้เฉพาะผู้ดูแล ผู้ใช้ทั่วไปยังใช้เอนจินในเบราว์เซอร์ตามเดิม',
+      gpuStatus: 'สถานะการเชื่อมต่อ', gpuConnected: 'เชื่อมต่อแล้ว', gpuNotConfigured: 'ยังไม่ได้เชื่อมต่อ',
+      gpuUnreachable: 'เชื่อมต่อไม่ได้', gpuRemoteOff: 'aixman ปิดบริการอยู่',
+      gpuServer: 'เซิร์ฟเวอร์', gpuKey: 'Partner key', gpuModel: 'โมเดล', gpuSs2Remote: 'SheetSage2 ที่ aixman',
+      gpuOn: 'เปิดแล้ว', gpuOff: 'ปิดอยู่', gpuLimits: 'เพดาน', gpuFileLe: 'ไฟล์ ≤', gpuSecPerSong: 'วินาที/เพลง',
+      gpuPerDay: 'งาน/วัน', gpuConcurrent: 'พร้อมกัน', gpuUsage: 'ใช้ไปวันนี้', gpuActiveNow: 'กำลังทำ',
+      gpuChecked: 'ตรวจล่าสุด', gpuRecheck: 'ตรวจสถานะอีกครั้ง',
+      gpuRd_ready: 'พร้อมใช้', gpuRd_tuning: 'ช่วงทดสอบ (งานแรกจะยืนยันความพร้อม)', gpuRd_broken: 'มีปัญหา', gpuRd_disabled: 'ปิดอยู่',
+      gpuPairTitle: 'ตั้งค่าการเชื่อมต่อ aixman', gpuBaseUrl: 'ที่อยู่เซิร์ฟเวอร์ (Base URL)',
+      gpuBaseHelp: 'อนุญาตเฉพาะ https://ai.xman4289.com เท่านั้น',
+      gpuKeyPh: 'วางคีย์จากหลังบ้าน aixman › เมนู AquaChord', gpuKeyKeep: 'เว้นว่าง = ใช้คีย์เดิม ({hint})',
+      gpuKeyHelp: 'คีย์เก็บไว้บนเซิร์ฟเวอร์ในโฟลเดอร์ private เท่านั้น — จะไม่แสดงเต็มอีก',
+      gpuNeedKey: 'กรุณาวาง Partner key จากหลังบ้าน aixman',
+      gpuDefMode: 'ชุดโมเดลเริ่มต้น', gpuModeOpen: 'Open — ไลเซนส์เปิด ใช้เชิงพาณิชย์ได้ (แนะนำ)',
+      gpuModeSs2: 'SheetSage2 — CC-BY-NC ห้ามใช้เชิงพาณิชย์',
+      gpuSs2Note: '⚠️ SheetSage2 ใช้น้ำหนักโมเดลสัญญาอนุญาต CC-BY-NC-4.0 — ใช้ได้เฉพาะงานที่ไม่ใช่เชิงพาณิชย์ (ทดลอง/ส่วนตัว) และต้องเปิดสิทธิ์ที่หลังบ้าน aixman ก่อน ถ้าไม่แน่ใจให้ใช้ Open',
+      gpuTestSave: 'ทดสอบการเชื่อมต่อและบันทึก', gpuTesting: 'กำลังทดสอบ…', gpuSavedOk: 'เชื่อมต่อสำเร็จ บันทึกแล้ว',
+      gpuSs2Confirm: 'ใช้ SheetSage2 เป็นค่าเริ่มต้น?',
+      gpuSs2ConfirmDesc: 'ผลจากโหมดนี้ห้ามใช้เชิงพาณิชย์ (CC-BY-NC-4.0) และทุกงานที่ไม่ได้ระบุโหมดจะใช้ SheetSage2',
+      gpuJobs: 'งาน GPU ล่าสุด', gpuNoJobs: 'ยังไม่มีงาน GPU',
+      gpuSt_uploading: 'กำลังอัปโหลด', gpuSt_queued: 'รอคิว', gpuSt_starting: 'กำลังเตรียมเครื่อง', gpuSt_rendering: 'กำลังประมวลผล',
+      gpuSt_completed: 'เสร็จแล้ว', gpuSt_failed: 'ล้มเหลว', gpuSt_cancelled: 'ยกเลิกแล้ว',
+      gpuCancel: 'ยกเลิกงาน', gpuCancelQ: 'ยกเลิกงานนี้?', gpuCancelDesc: 'ยกเลิกได้เฉพาะงานที่ยังรอคิว — งานที่เริ่มประมวลผลแล้วจะยกเลิกไม่ได้',
+      gpuKeepJob: 'ไม่ยกเลิก', gpuDownload: 'ดาวน์โหลดผล JSON', gpuNoResult: 'งานนี้ยังไม่มีผลลัพธ์',
+      gpuQueuePos: 'คิวที่', gpuEta: 'อีกประมาณ', gpuBy: 'โดย', gpuSec: 'วิ', gpuMin: 'นาที',
+      gpuTestJob: 'ส่งงานทดสอบ', gpuTestJobNote: 'ส่งงานจริงไปที่ GPU ของ aixman (นับโควต้ารายวัน) — ผลเป็นร่างจาก AI ต้องตรวจแก้ก่อนใช้',
+      gpuFile: 'ไฟล์เสียง (MP3, WAV, FLAC, OGG, M4A)', gpuFileMax: 'ไม่เกิน {n} MB',
+      gpuLyricsOpt: 'เนื้อเพลง (ถ้ามี — ช่วยให้จัดเวลาเนื้อร้องแม่นขึ้น)', gpuMode: 'ชุดโมเดล', gpuSend: 'ส่งงาน',
+      gpuUploading: 'กำลังอัปโหลด {p}%', gpuForwarding: 'กำลังส่งต่อไปยัง GPU…', gpuSubmitted: 'ส่งงานแล้ว',
+      gpuDeduped: 'งานนี้ถูกส่งไปแล้ว — แสดงงานเดิม', gpuNeedFile: 'กรุณาเลือกไฟล์เสียง', gpuTooBig: 'ไฟล์ใหญ่เกิน {n} MB',
+      gpuNetErr: 'การเชื่อมต่อขัดข้อง — งานอาจถูกสร้างแล้ว ตรวจรายการด้านล่าง', gpuNeedPair: 'เชื่อมต่อ aixman ด้านบนก่อนจึงจะส่งงานได้',
     },
     en: {
       tag: 'Admin',
@@ -47,7 +80,39 @@
       delAdmin: 'Delete this admin?', settings: 'Site settings',
       siteName: 'Site name', copyrightEmail: 'Copyright contact email', enableUrl: 'Allow transcribing from URL links',
       annTh: 'Announcement (Thai)', annEn: 'Announcement (English)', saved: 'Saved', added: 'Added', deleted: 'Deleted',
-      required: 'Please fill in all fields', confirm: 'Confirm',
+      required: 'Please fill in all fields', confirm: 'Confirm', refresh: 'Refresh',
+      tabGpu: 'GPU / AI', gpuTitle: 'GPU / AI server',
+      gpuIntro: "Connect AquaChord to aixman's GPU rental to transcribe chords, Thai lyrics and melody with large models — admins only in this phase; public users keep the in-browser engine.",
+      gpuStatus: 'Connection status', gpuConnected: 'Connected', gpuNotConfigured: 'Not connected',
+      gpuUnreachable: 'Unreachable', gpuRemoteOff: 'Disabled at aixman',
+      gpuServer: 'Server', gpuKey: 'Partner key', gpuModel: 'Model', gpuSs2Remote: 'SheetSage2 at aixman',
+      gpuOn: 'Enabled', gpuOff: 'Disabled', gpuLimits: 'Limits', gpuFileLe: 'file ≤', gpuSecPerSong: 's/song',
+      gpuPerDay: 'jobs/day', gpuConcurrent: 'concurrent', gpuUsage: 'Used today', gpuActiveNow: 'running',
+      gpuChecked: 'Last checked', gpuRecheck: 'Check again',
+      gpuRd_ready: 'Ready', gpuRd_tuning: 'Tuning (first success confirms readiness)', gpuRd_broken: 'Broken', gpuRd_disabled: 'Disabled',
+      gpuPairTitle: 'aixman connection settings', gpuBaseUrl: 'Server (base URL)',
+      gpuBaseHelp: 'Only https://ai.xman4289.com is allowed',
+      gpuKeyPh: 'Paste the key from aixman admin › AquaChord', gpuKeyKeep: 'Leave blank to keep the current key ({hint})',
+      gpuKeyHelp: 'Stored only on the server in the private folder — never shown in full again',
+      gpuNeedKey: 'Please paste the partner key from aixman admin',
+      gpuDefMode: 'Default model set', gpuModeOpen: 'Open — permissive licenses, commercial use OK (recommended)',
+      gpuModeSs2: 'SheetSage2 — CC-BY-NC, non-commercial only',
+      gpuSs2Note: '⚠️ SheetSage2 uses CC-BY-NC-4.0 model weights — non-commercial use only (experiments/personal) and it must be enabled in aixman admin first. When in doubt, use Open.',
+      gpuTestSave: 'Test connection & save', gpuTesting: 'Testing…', gpuSavedOk: 'Connected and saved',
+      gpuSs2Confirm: 'Use SheetSage2 by default?',
+      gpuSs2ConfirmDesc: 'Results from this mode are non-commercial only (CC-BY-NC-4.0), and every job without an explicit mode will use SheetSage2.',
+      gpuJobs: 'Recent GPU jobs', gpuNoJobs: 'No GPU jobs yet',
+      gpuSt_uploading: 'Uploading', gpuSt_queued: 'Queued', gpuSt_starting: 'Starting machine', gpuSt_rendering: 'Processing',
+      gpuSt_completed: 'Done', gpuSt_failed: 'Failed', gpuSt_cancelled: 'Cancelled',
+      gpuCancel: 'Cancel job', gpuCancelQ: 'Cancel this job?', gpuCancelDesc: 'Only queued jobs can be cancelled — jobs already processing cannot.',
+      gpuKeepJob: 'Keep it', gpuDownload: 'Download result JSON', gpuNoResult: 'This job has no result yet',
+      gpuQueuePos: 'Queue #', gpuEta: 'ETA', gpuBy: 'by', gpuSec: 's', gpuMin: 'min',
+      gpuTestJob: 'Send a test job', gpuTestJobNote: 'Sends a real job to aixman GPUs (counts toward the daily quota). Output is an AI draft — review before use.',
+      gpuFile: 'Audio file (MP3, WAV, FLAC, OGG, M4A)', gpuFileMax: 'max {n} MB',
+      gpuLyricsOpt: 'Lyrics (optional — improves lyric timing)', gpuMode: 'Model set', gpuSend: 'Submit',
+      gpuUploading: 'Uploading {p}%', gpuForwarding: 'Forwarding to GPU…', gpuSubmitted: 'Job submitted',
+      gpuDeduped: 'Already submitted — showing the existing job', gpuNeedFile: 'Please choose an audio file', gpuTooBig: 'File exceeds {n} MB',
+      gpuNetErr: 'Connection problem — the job may have been created; check the list below', gpuNeedPair: 'Connect to aixman above before submitting jobs',
     },
   };
   let lang = localStorage.getItem('aq.lang') || 'th';
@@ -85,6 +150,7 @@
 
   function saveToken(tok, me) { state.token = tok; state.me = me; localStorage.setItem('aq.admin.token', tok); }
   async function doLogout(expired) {
+    gpuStop();
     try { if (!expired) await api('POST', '/logout'); } catch (e) {}
     state.token = ''; state.me = null; localStorage.removeItem('aq.admin.token');
     render();
@@ -199,7 +265,8 @@
 
   /* ---------------- dashboard shell ---------------- */
   function renderDashboard() {
-    const tabs = [['overview', t('tabOverview')], ['songs', t('tabSongs')], ['admins', t('tabAdmins')], ['settings', t('tabSettings')]];
+    gpuStop();   // หยุด timer/async ของแท็บ GPU ทุกครั้งที่วาดใหม่หรือสลับแท็บ
+    const tabs = [['overview', t('tabOverview')], ['songs', t('tabSongs')], ['admins', t('tabAdmins')], ['gpu', t('tabGpu')], ['settings', t('tabSettings')]];
     $app.innerHTML =
       '<div class="topbar"><div class="brand"><img src="../assets/logo-mark.png" alt=""/><b>AquaChord</b><span class="tag">' + t('tag') + '</span></div>' +
       '<div class="topbar-actions"><span class="who">👤 ' + esc(state.me.username) + '</span>' + langBtn() +
@@ -214,6 +281,7 @@
     if (state.tab === 'overview') renderOverview(v);
     else if (state.tab === 'songs') renderSongs(v);
     else if (state.tab === 'admins') renderAdmins(v);
+    else if (state.tab === 'gpu') renderGpu(v);
     else if (state.tab === 'settings') renderSettings(v);
   }
 
@@ -370,6 +438,341 @@
         } catch (e) { toast(e.message, true); }
       });
     } catch (e) { v.innerHTML = errCard(e); }
+  }
+
+  /* ---------------- GPU / AI server (docs/09 §3) ----------------
+     จับคู่กับ aixman (PUT /gpu/config ทดสอบ ping ก่อนบันทึก), สถานะ + เพดาน/การใช้งานจาก ping,
+     รายการงานล่าสุด (poll งานที่ยังไม่จบทุก 5 วิ เฉพาะตอนแท็บนี้เปิดและหน้าจอมองเห็น) */
+  const GPU_ACTIVE = ['uploading', 'queued', 'starting', 'rendering'];
+  const gpu = { gen: 0, timer: null, cfg: null, jobs: [], notices: {}, submitting: false };
+  function gpuStop() {
+    gpu.gen++;                                   // async ที่ค้างอยู่จะเห็น gen ไม่ตรง แล้วเลิกแตะ DOM
+    if (gpu.timer) { clearTimeout(gpu.timer); gpu.timer = null; }
+  }
+  const gpuAlive = (my) => my === gpu.gen && state.tab === 'gpu' && !!state.me;
+  const tf = (k, o) => t(k).replace(/\{(\w+)\}/g, (_, x) => (o && o[x] != null ? String(o[x]) : ''));
+  const fmtTime = (ms) => { try { return new Date(ms).toLocaleString(lang === 'th' ? 'th-TH' : 'en-GB', { dateStyle: 'short', timeStyle: 'short' }); } catch (e) { return ''; } };
+  const fmtDur = (s) => (s >= 90 ? Math.round(s / 60) + ' ' + t('gpuMin') : Math.max(0, Math.round(s)) + ' ' + t('gpuSec'));
+  const fmtMB = (b) => (b < 1048576 ? Math.max(1, Math.round(b / 1024)) + ' KB' : (b / 1048576).toFixed(1) + ' MB');
+  const errInner = (e) => '<div class="empty"><div class="e">⚠️</div>' + esc(e.message) + '</div>';
+  const gpuNeedsPoll = (j) => GPU_ACTIVE.indexOf(j.status) >= 0 || (j.status === 'completed' && !j.hasResult);
+  const gpuStLabel = (st) => (DICT[lang]['gpuSt_' + st] ? t('gpuSt_' + st) : st);
+  const gpuReadiness = (r) => (DICT[lang]['gpuRd_' + r] ? t('gpuRd_' + r) : r);
+
+  /** multipart upload ผ่าน XHR (ได้ % อัปโหลด) — ไม่ตั้ง Content-Type เอง ให้เบราว์เซอร์ใส่ boundary */
+  function apiUpload(path, fd, onProgress) {
+    return new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open('POST', API + path);
+      if (state.token) x.setRequestHeader('Authorization', 'Bearer ' + state.token);
+      x.timeout = 300000;
+      x.upload.onprogress = (e) => { if (e.lengthComputable && onProgress) onProgress(e.loaded / e.total); };
+      x.onload = () => {
+        let d = null; try { d = JSON.parse(x.responseText); } catch (e) {}
+        if (x.status >= 200 && x.status < 300 && d) { resolve(d); return; }
+        if (x.status === 401 && state.me) doLogout(true);
+        const err = new Error((d && d.error && d.error.message) || t('gpuNetErr'));
+        err.status = x.status; err.code = d && d.error && d.error.code;
+        reject(err);
+      };
+      x.onerror = () => reject(new Error(t('gpuNetErr')));
+      x.ontimeout = () => reject(new Error(t('gpuNetErr')));
+      x.send(fd);
+    });
+  }
+
+  function renderGpu(v) {
+    const my = gpu.gen;
+    v.innerHTML =
+      '<div class="card"><div class="section-title">🖥 ' + t('gpuTitle') + '</div><p class="muted">' + t('gpuIntro') + '</p></div>' +
+      '<div class="card" id="gpuStatus"><div class="muted">…</div></div>' +
+      '<div class="card" id="gpuPair"><div class="muted">…</div></div>' +
+      '<div class="card"><div class="section-title">🧾 ' + t('gpuJobs') +
+      '<button class="btn-ghost btn-sm" id="gpuJobsRefresh">↻ ' + t('refresh') + '</button></div>' +
+      '<div id="gpuSubmit"></div><div id="gpuJobList"><div class="muted">…</div></div></div>';
+    document.getElementById('gpuJobsRefresh').addEventListener('click', () => gpuLoadJobs(gpu.gen));
+    gpuLoadConfig(my, false, true);
+    gpuLoadJobs(my);
+  }
+
+  /** full=true → วาดฟอร์มจับคู่ใหม่ด้วย (ตอนเปิดแท็บ/หลังบันทึก) · false → อัปเดตเฉพาะสถานะ ไม่ล้างสิ่งที่พิมพ์ค้าง */
+  async function gpuLoadConfig(my, fresh, full) {
+    const box = document.getElementById('gpuStatus');
+    if (box && gpu.cfg) box.classList.add('is-busy');
+    try {
+      const c = await api('GET', '/gpu/config' + (fresh ? '?fresh=1' : ''));
+      if (!gpuAlive(my)) return;
+      gpu.cfg = c;
+      gpuRenderStatus();
+      if (full) gpuRenderPair();
+      gpuRenderSubmit();
+    } catch (e) {
+      if (!gpuAlive(my)) return;
+      const el = document.getElementById('gpuStatus');
+      if (el) { el.classList.remove('is-busy'); el.innerHTML = errInner(e); }
+      if (full && !gpu.cfg) { gpu.cfg = {}; gpuRenderPair(); }
+    }
+  }
+
+  function gpuRenderStatus() {
+    const el = document.getElementById('gpuStatus'); if (!el) return;
+    el.classList.remove('is-busy');
+    const c = gpu.cfg || {}, r = c.remote;
+    let pill;
+    if (!c.configured) pill = '<span class="pill priv">' + t('gpuNotConfigured') + '</span>';
+    else if (c.error) pill = '<span class="pill err">' + t('gpuUnreachable') + '</span>';
+    else if (r && !r.enabled) pill = '<span class="pill warn">' + t('gpuRemoteOff') + '</span>';
+    else pill = '<span class="pill pub">' + t('gpuConnected') + '</span>';
+    const kv = (k, html) => '<div class="kv-k">' + esc(k) + '</div><div class="kv-v">' + html + '</div>';
+    let rows = kv(t('gpuServer'), esc(c.baseUrl || '—')) +
+      kv(t('gpuKey'), c.keyHint ? '<code>' + esc(c.keyHint) + '</code>' : '<span class="muted">—</span>');
+    if (r) {
+      const L = r.limits || {}, U = r.usage || {}, M = r.model || {};
+      rows += kv(t('gpuModel'), esc(M.key || '—') + (M.readiness ? ' · ' + esc(gpuReadiness(M.readiness)) : ''));
+      rows += kv(t('gpuSs2Remote'), esc(r.allowSheetSage2 ? t('gpuOn') : t('gpuOff')));
+      rows += kv(t('gpuLimits'), esc([
+        L.maxAudioMb != null ? t('gpuFileLe') + ' ' + L.maxAudioMb + ' MB' : null,
+        L.maxSeconds != null ? '≤ ' + L.maxSeconds + ' ' + t('gpuSecPerSong') : null,
+        L.maxJobsPerDay != null ? L.maxJobsPerDay + ' ' + t('gpuPerDay') : null,
+        L.maxActiveJobs != null ? t('gpuConcurrent') + ' ' + L.maxActiveJobs : null,
+      ].filter(Boolean).join(' · ') || '—'));
+      rows += kv(t('gpuUsage'), esc((U.jobsToday != null ? U.jobsToday : '—') + (L.maxJobsPerDay != null ? ' / ' + L.maxJobsPerDay : '') +
+        ' · ' + t('gpuActiveNow') + ' ' + (U.activeJobs != null ? U.activeJobs : '—') + (L.maxActiveJobs != null ? ' / ' + L.maxActiveJobs : '')));
+      if (r.pingedAt) rows += kv(t('gpuChecked'), esc(fmtTime(r.pingedAt)));
+    }
+    el.innerHTML = '<div class="section-title">📡 ' + t('gpuStatus') + pill + '</div><div class="kv">' + rows + '</div>' +
+      (c.error ? '<div class="form-err" style="margin:10px 0 0">' + esc(c.error) + '</div>' : '') +
+      (c.warning ? '<div class="note-warn" style="margin:10px 0 0">' + esc(c.warning) + '</div>' : '') +
+      (c.configured ? '<button class="btn-ghost btn-sm" id="gpuRecheck" style="margin-top:12px">↻ ' + t('gpuRecheck') + '</button>' : '');
+    const b = document.getElementById('gpuRecheck');
+    if (b) b.addEventListener('click', () => { b.disabled = true; gpuLoadConfig(gpu.gen, true, false); });
+  }
+
+  function gpuRenderPair() {
+    const el = document.getElementById('gpuPair'); if (!el) return;
+    const c = gpu.cfg || {};
+    el.innerHTML = '<div class="section-title">🔗 ' + t('gpuPairTitle') + '</div>' +
+      '<div class="form-err" id="gpuPairErr"></div>' +
+      '<div class="field"><label for="gpuBase">' + t('gpuBaseUrl') + '</label>' +
+      '<input id="gpuBase" type="url" inputmode="url" autocomplete="off" spellcheck="false" maxlength="300" value="' + esc(c.baseUrl || 'https://ai.xman4289.com') + '"/>' +
+      '<div class="hint">' + t('gpuBaseHelp') + '</div></div>' +
+      '<div class="field"><label for="gpuKeyIn">' + t('gpuKey') + '</label>' +
+      '<input id="gpuKeyIn" type="password" autocomplete="new-password" spellcheck="false" maxlength="256" placeholder="' +
+      esc(c.keyHint ? tf('gpuKeyKeep', { hint: c.keyHint }) : t('gpuKeyPh')) + '"/>' +
+      '<div class="hint">' + t('gpuKeyHelp') + '</div></div>' +
+      '<div class="field"><label for="gpuDefMode">' + t('gpuDefMode') + '</label><select id="gpuDefMode">' +
+      '<option value="open"' + (c.defaultMode !== 'sheetsage2' ? ' selected' : '') + '>' + t('gpuModeOpen') + '</option>' +
+      '<option value="sheetsage2"' + (c.defaultMode === 'sheetsage2' ? ' selected' : '') + '>' + t('gpuModeSs2') + '</option></select></div>' +
+      '<div class="note-warn">' + t('gpuSs2Note') + '</div>' +
+      '<button class="btn" id="gpuSave">' + t('gpuTestSave') + '</button>';
+    document.getElementById('gpuSave').addEventListener('click', gpuSaveConfig);
+  }
+
+  function gpuSaveConfig() {
+    const my = gpu.gen;
+    const btn = document.getElementById('gpuSave'), err = document.getElementById('gpuPairErr');
+    if (!btn || btn.disabled) return;
+    const payload = { baseUrl: val('gpuBase'), partnerKey: val('gpuKeyIn'), defaultMode: document.getElementById('gpuDefMode').value };
+    if (!payload.partnerKey && !(gpu.cfg && gpu.cfg.keyHint)) { err.textContent = t('gpuNeedKey'); return; }
+    const go = async () => {
+      err.textContent = ''; btn.disabled = true; btn.textContent = t('gpuTesting');
+      try {
+        const r = await api('PUT', '/gpu/config', payload);
+        if (!gpuAlive(my)) { toast(r.warning || t('gpuSavedOk'), !!r.warning); return; }
+        gpu.cfg = r;
+        gpuRenderStatus(); gpuRenderPair(); gpuRenderSubmit();       // วาดฟอร์มใหม่ = ล้างช่องคีย์ทิ้ง
+        toast(r.warning || t('gpuSavedOk'), !!r.warning);
+      } catch (e) {
+        if (!gpuAlive(my)) { toast(e.message, true); return; }
+        const er = document.getElementById('gpuPairErr'); if (er) er.textContent = e.message;
+        btn.disabled = false; btn.textContent = t('gpuTestSave');
+      }
+    };
+    if (payload.defaultMode === 'sheetsage2' && (!gpu.cfg || gpu.cfg.defaultMode !== 'sheetsage2')) {
+      const m = modal('<h3>' + t('gpuSs2Confirm') + '</h3><p class="muted">' + t('gpuSs2ConfirmDesc') + '</p>' +
+        '<div class="modal-actions"><button class="btn" id="ok">' + t('confirm') + '</button><button class="btn-ghost" id="no">' + t('cancel') + '</button></div>');
+      m.root.querySelector('#no').addEventListener('click', m.close);
+      m.root.querySelector('#ok').addEventListener('click', () => { m.close(); go(); });
+      return;
+    }
+    go();
+  }
+
+  function gpuRenderSubmit() {
+    const el = document.getElementById('gpuSubmit'); if (!el) return;
+    const c = gpu.cfg || {};
+    if (!c.configured) { el.dataset.ready = ''; el.innerHTML = '<p class="muted" style="margin-bottom:12px">' + t('gpuNeedPair') + '</p>'; return; }
+    if (el.dataset.ready === '1') {                // วาดไว้แล้ว — อัปเดตแค่เพดานไฟล์/โหมดเริ่มต้น ไม่ล้างสิ่งที่เลือก/พิมพ์ไว้
+      const cap = document.getElementById('gpuCap'); if (cap) cap.textContent = tf('gpuFileMax', { n: c.uploadCapMb });
+      const sel = document.getElementById('gpuJobMode');
+      if (sel && sel.dataset.touched !== '1') sel.value = c.defaultMode === 'sheetsage2' ? 'sheetsage2' : 'open';
+      return;
+    }
+    el.dataset.ready = '1';
+    el.innerHTML = '<details class="gpu-submit"><summary>🎧 ' + t('gpuTestJob') + '</summary>' +
+      '<p class="muted" style="margin:8px 0 12px">' + t('gpuTestJobNote') + '</p>' +
+      '<div class="form-err" id="gpuSubErr"></div>' +
+      '<div class="field"><label for="gpuFile">' + t('gpuFile') + ' · <span id="gpuCap">' + esc(tf('gpuFileMax', { n: c.uploadCapMb })) + '</span></label>' +
+      '<input id="gpuFile" type="file" accept="audio/*,.mp3,.wav,.flac,.ogg,.m4a"/></div>' +
+      '<div class="two"><div class="field"><label for="gpuTitle">' + t('title') + '</label><input id="gpuTitle" maxlength="200" autocomplete="off"/></div>' +
+      '<div class="field"><label for="gpuJobMode">' + t('gpuMode') + '</label><select id="gpuJobMode">' +
+      '<option value="open">Open</option><option value="sheetsage2">SheetSage2 (CC-BY-NC)</option></select></div></div>' +
+      '<div class="field"><label for="gpuLyrics">' + t('gpuLyricsOpt') + '</label><textarea id="gpuLyrics" maxlength="5000" class="plain"></textarea></div>' +
+      '<button class="btn" id="gpuSend">' + t('gpuSend') + '</button> <span class="muted" id="gpuSendState"></span></details>';
+    const sel = document.getElementById('gpuJobMode');
+    sel.value = c.defaultMode === 'sheetsage2' ? 'sheetsage2' : 'open';
+    sel.addEventListener('change', () => { sel.dataset.touched = '1'; });
+    const b = document.getElementById('gpuSend');
+    b.addEventListener('click', gpuSubmitJob);
+    if (gpu.submitting) b.disabled = true;         // อัปโหลดจากรอบก่อน (ก่อนสลับแท็บ) ยังไม่จบ
+  }
+
+  function gpuSubmitJob() {
+    const btn = document.getElementById('gpuSend'), err = document.getElementById('gpuSubErr');
+    if (!btn || btn.disabled || gpu.submitting) return;
+    err.textContent = '';
+    const fi = document.getElementById('gpuFile'), file = fi && fi.files && fi.files[0];
+    if (!file) { err.textContent = t('gpuNeedFile'); return; }
+    const cap = (gpu.cfg && gpu.cfg.uploadCapMb) || 64;
+    if (file.size > cap * 1048576) { err.textContent = tf('gpuTooBig', { n: cap }); return; }
+    const lyrics = document.getElementById('gpuLyrics').value;
+    const fd = new FormData();
+    fd.append('file', file, file.name);
+    fd.append('title', val('gpuTitle'));
+    fd.append('mode', document.getElementById('gpuJobMode').value);
+    fd.append('language', 'th');
+    if (lyrics.trim()) fd.append('lyrics', lyrics);
+    const setState = (s) => { const x = document.getElementById('gpuSendState'); if (x) x.textContent = s; };
+    gpu.submitting = true; btn.disabled = true;
+    setState(tf('gpuUploading', { p: 0 }));
+    apiUpload('/gpu/jobs', fd, (p) => setState(p >= 1 ? t('gpuForwarding') : tf('gpuUploading', { p: Math.round(p * 100) })))
+      .then((r) => {
+        toast(r.deduped ? t('gpuDeduped') : t('gpuSubmitted'));
+        if (state.tab === 'gpu') {
+          ['gpuFile', 'gpuTitle', 'gpuLyrics'].forEach((id) => { const x = document.getElementById(id); if (x) x.value = ''; });
+        }
+      })
+      .catch((e) => {
+        const er = state.tab === 'gpu' && document.getElementById('gpuSubErr');
+        if (er) er.textContent = e.message; else toast(e.message, true);
+      })
+      .finally(() => {
+        gpu.submitting = false; setState('');
+        const b = document.getElementById('gpuSend'); if (b) b.disabled = false;
+        if (state.tab === 'gpu' && state.me) gpuLoadJobs(gpu.gen);   // งานอาจถูกสร้างแม้ได้ error (เช่น proxy หมดเวลา)
+      });
+  }
+
+  async function gpuLoadJobs(my) {
+    try {
+      const r = await api('GET', '/gpu/jobs');
+      if (!gpuAlive(my)) return;
+      gpu.jobs = r.jobs || [];
+      gpuRenderJobs();
+      gpuSchedulePoll(my);
+    } catch (e) {
+      if (!gpuAlive(my)) return;
+      const el = document.getElementById('gpuJobList'); if (el) el.innerHTML = errInner(e);
+    }
+  }
+
+  function gpuSchedulePoll(my) {
+    if (gpu.timer) { clearTimeout(gpu.timer); gpu.timer = null; }
+    if (!gpuAlive(my) || !gpu.jobs.some(gpuNeedsPoll)) return;
+    gpu.timer = setTimeout(() => gpuPollTick(my), 5000);
+  }
+
+  async function gpuPollTick(my) {
+    gpu.timer = null;
+    if (!gpuAlive(my)) return;
+    if (document.hidden) { gpuSchedulePoll(my); return; }        // แท็บเบราว์เซอร์ถูกซ่อน — รอรอบถัดไป
+    const targets = gpu.jobs.filter(gpuNeedsPoll).slice(0, 4);
+    for (const j of targets) {
+      try {
+        const r = await api('GET', '/gpu/jobs/' + encodeURIComponent(j.id) + '?result=0');
+        if (!gpuAlive(my)) return;
+        const i = gpu.jobs.findIndex((x) => x.id === j.id);
+        if (i >= 0 && r.job) gpu.jobs[i] = r.job;
+        if (r.notice) gpu.notices[j.id] = r.notice; else delete gpu.notices[j.id];
+      } catch (e) {
+        if (!gpuAlive(my)) return;
+        gpu.notices[j.id] = e.message;
+        if (e.status === 404) gpu.jobs = gpu.jobs.filter((x) => x.id !== j.id);
+      }
+    }
+    gpuRenderJobs();
+    gpuSchedulePoll(my);
+  }
+
+  function gpuRenderJobs() {
+    const el = document.getElementById('gpuJobList'); if (!el) return;
+    if (!gpu.jobs.length) { el.innerHTML = '<div class="empty"><div class="e">🫧</div>' + t('gpuNoJobs') + '</div>'; return; }
+    el.innerHTML = gpu.jobs.map(gpuJobRow).join('');
+    el.querySelectorAll('[data-gcancel]').forEach((b) => b.addEventListener('click', () => gpuConfirmCancel(b.dataset.gcancel)));
+    el.querySelectorAll('[data-gdl]').forEach((b) => b.addEventListener('click', () => gpuDownload(b.dataset.gdl, b)));
+  }
+
+  function gpuJobRow(j) {
+    const st = j.status, active = GPU_ACTIVE.indexOf(st) >= 0;
+    const cls = st === 'completed' ? 'pub' : st === 'failed' ? 'err' : st === 'cancelled' ? 'priv' : 'run';
+    const pct = active && j.progress != null ? Math.round(j.progress * 100) : null;
+    const live = [];
+    if (active && j.stageLabel) live.push(j.stageLabel);
+    if (st === 'queued' && j.queuePosition != null) live.push(t('gpuQueuePos') + ' ' + j.queuePosition);
+    if (active && j.etaSeconds != null) live.push(t('gpuEta') + ' ' + fmtDur(j.etaSeconds));
+    const sub = [fmtTime(j.createdAt), j.createdBy ? t('gpuBy') + ' ' + j.createdBy : null,
+      j.fileBytes ? fmtMB(j.fileBytes) : null, j.gpuSeconds != null ? 'GPU ' + Math.round(j.gpuSeconds) + ' ' + t('gpuSec') : null].filter(Boolean);
+    const notice = gpu.notices[j.id];
+    return '<div class="row gpu-row"><div class="grow">' +
+      '<div class="t">' + esc(j.title || j.fileName || j.id) + '</div>' +
+      '<div class="s">' + esc(sub.join(' · ')) + '</div>' +
+      (live.length ? '<div class="s">' + esc(live.join(' · ')) + '</div>' : '') +
+      (pct != null ? '<div class="gbar"><span style="width:' + pct + '%"></span></div>' : '') +
+      (st === 'failed' && j.errorMessage ? '<div class="s gerr">' + esc(j.errorMessage) + '</div>' : '') +
+      (notice && gpuNeedsPoll(j) ? '<div class="s gwarn">' + esc(notice) + '</div>' : '') +
+      '</div>' +
+      '<span class="pill ' + (j.mode === 'sheetsage2' ? 'warn' : 'owner') + '">' + (j.mode === 'sheetsage2' ? 'SheetSage2' : 'Open') + '</span>' +
+      '<span class="pill ' + cls + '">' + esc(gpuStLabel(st)) + (pct != null ? ' ' + pct + '%' : '') + '</span>' +
+      (st === 'queued' || st === 'uploading' ? '<button class="icon-btn" title="' + esc(t('gpuCancel')) + '" aria-label="' + esc(t('gpuCancel')) + '" data-gcancel="' + esc(j.id) + '">✕</button>' : '') +
+      (j.hasResult ? '<button class="icon-btn" title="' + esc(t('gpuDownload')) + '" aria-label="' + esc(t('gpuDownload')) + '" data-gdl="' + esc(j.id) + '">⬇</button>' : '') +
+      '</div>';
+  }
+
+  function gpuConfirmCancel(id) {
+    const my = gpu.gen;
+    const m = modal('<h3>' + t('gpuCancelQ') + '</h3><p class="muted">' + t('gpuCancelDesc') + '</p>' +
+      '<div class="modal-actions"><button class="btn btn-danger" id="ok">' + t('gpuCancel') + '</button><button class="btn-ghost" id="no">' + t('gpuKeepJob') + '</button></div>');
+    m.root.querySelector('#no').addEventListener('click', m.close);
+    const ok = m.root.querySelector('#ok');
+    ok.addEventListener('click', async () => {
+      if (ok.disabled) return;
+      ok.disabled = true;
+      try {
+        const r = await api('DELETE', '/gpu/jobs/' + encodeURIComponent(id));
+        m.close(); toast(t('gpuSt_cancelled'));
+        if (!gpuAlive(my)) return;
+        const i = gpu.jobs.findIndex((x) => x.id === id);
+        if (i >= 0 && r.job) gpu.jobs[i] = r.job;
+        gpuRenderJobs();
+      } catch (e) { m.close(); toast(e.message, true); if (gpuAlive(my)) gpuLoadJobs(my); }
+    });
+  }
+
+  async function gpuDownload(id, btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    try {
+      const r = await api('GET', '/gpu/jobs/' + encodeURIComponent(id));
+      if (!r.result) throw new Error(t('gpuNoResult'));
+      const blob = new Blob([JSON.stringify(r.result, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const base = String((r.job && (r.job.title || r.job.fileName)) || id).replace(/[\\/:*?"<>|\u0000-\u001f]+/g, '_').slice(0, 80);
+      const a = document.createElement('a');
+      a.href = url; a.download = base + '.aquachord.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch (e) { toast(e.message, true); }
+    finally { btn.disabled = false; }
   }
 
   /* ---------------- bubbles ---------------- */

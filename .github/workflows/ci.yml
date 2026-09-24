@@ -24,6 +24,8 @@ jobs:
             n=$((n+1))
           done < <(find site/api -name '*.php' -print0)
           echo "✓ linted $n PHP files"
+      - name: เทสต์ GPU transcribe (magic bytes / SSRF allowlist / ตรวจผล / ไฟล์ตั้งค่า)
+        run: php tools/test-gpu-php.php
 
   web-check:
     name: Check JS / JSON (frontend)

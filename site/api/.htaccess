@@ -21,6 +21,10 @@ CGIPassAuth On
   Require all denied
 </FilesMatch>
 # บล็อกการเรียก lib/*.php ตรง ๆ (index.php include เท่านั้น)
-<FilesMatch "^(db|auth|util)\.php$">
+<FilesMatch "^(db|auth|util|gpu)\.php$">
   Require all denied
 </FilesMatch>
+# ค่า PHP ต่อโฟลเดอร์ (upload limit) — ไม่ต้องให้ใครอ่านได้
+<Files ".user.ini">
+  Require all denied
+</Files>

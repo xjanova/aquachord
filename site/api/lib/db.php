@@ -95,6 +95,34 @@ function migrate(PDO $db): void {
         ts BIGINT NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // งานถอดเพลงผ่าน GPU ของ aixman (docs/09 §3) — id ของเรา = Idempotency-Key/externalRef ฝั่ง aixman
+    $db->exec("CREATE TABLE IF NOT EXISTS gpu_jobs (
+        id VARCHAR(40) PRIMARY KEY,
+        remote_id VARCHAR(64) NULL,
+        status VARCHAR(20) NOT NULL,
+        stage_label VARCHAR(200) NULL,
+        progress DOUBLE NULL,
+        eta_seconds INT NULL,
+        queue_position INT NULL,
+        mode VARCHAR(20) NOT NULL,
+        language VARCHAR(8) NOT NULL DEFAULT 'th',
+        title VARCHAR(300) NULL,
+        file_name VARCHAR(300) NULL,
+        file_bytes INT NULL,
+        file_sha256 CHAR(64) NULL,
+        lyrics MEDIUMTEXT NULL,
+        result_json MEDIUMTEXT NULL,
+        error VARCHAR(600) NULL,
+        gpu_seconds DOUBLE NULL,
+        created_by INT NULL,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        polled_at BIGINT NULL,
+        INDEX idx_gpu_created (created_at),
+        INDEX idx_gpu_admin (created_by, status, created_at),
+        CONSTRAINT fk_gpu_admin FOREIGN KEY (created_by) REFERENCES admins(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
     $defaults = [
         'site_name'         => 'AquaChord',
         'copyright_email'   => '',

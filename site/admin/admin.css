@@ -150,4 +150,30 @@ html[data-theme=dark] .btn-ghost:hover{background:rgba(255,255,255,.1)}
 html[data-theme=dark] .pill.priv{background:rgba(148,163,184,.16);color:#cbd5e1}
 html[data-theme=dark] .auth-sub,html[data-theme=dark] .muted,html[data-theme=dark] .who{color:var(--ink-faint)}
 
+/* ---- GPU / AI server ---- */
+.pill.err{background:rgba(225,29,72,.14);color:#be123c}
+.pill.warn{background:rgba(245,158,11,.18);color:#b45309}
+.pill.run{background:rgba(34,211,238,.18);color:#0e7490}
+.kv{display:grid;grid-template-columns:max-content 1fr;gap:8px 16px;font-size:.9rem}
+.kv-k{color:var(--ink-faint);font-size:.8rem;font-weight:600;padding-top:2px}
+.kv-v{color:var(--ink);min-width:0;overflow-wrap:anywhere}
+.kv code{font-family:var(--fm);font-size:.85rem}
+.field .hint{font-size:.75rem;color:var(--ink-faint);margin-top:5px}
+.field textarea.plain{font-family:var(--fb);font-size:.95rem;min-height:90px}
+.note-warn{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.35);color:#92400e;border-radius:var(--radius-sm);padding:10px 12px;font-size:.84rem;margin-bottom:14px;line-height:1.55}
+.gpu-submit{background:var(--glass-strong);border:1px solid var(--glass-brd);border-radius:var(--radius-sm);padding:12px 14px;margin-bottom:12px}
+.gpu-submit summary{cursor:pointer;font-family:var(--fd);font-weight:500;color:var(--teal-deep)}
+.gbar{height:5px;border-radius:999px;background:rgba(13,148,136,.14);overflow:hidden;margin-top:6px}
+.gbar span{display:block;height:100%;background:var(--aqua-grad);transition:width .4s var(--ease)}
+.row .s.gerr{color:#be123c;white-space:normal}
+.row .s.gwarn{color:#b45309;white-space:normal}
+.is-busy{opacity:.6;transition:opacity .2s}
+@media(max-width:520px){.kv{grid-template-columns:1fr;gap:2px 0}.kv-v{margin-bottom:6px}.gpu-row{flex-wrap:wrap}.gpu-row .grow{flex-basis:100%}}
+html[data-theme=dark] .pill.err{background:rgba(251,113,133,.16);color:#fda4af}
+html[data-theme=dark] .pill.warn{background:rgba(251,191,36,.16);color:#fcd34d}
+html[data-theme=dark] .pill.run{background:rgba(34,211,238,.16);color:#67e8f9}
+html[data-theme=dark] .note-warn{background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.3);color:#fde68a}
+html[data-theme=dark] .row .s.gerr{color:#fda4af}
+html[data-theme=dark] .row .s.gwarn{color:#fcd34d}
+
 @media (prefers-reduced-motion:reduce){#bubbles{display:none}*{animation-duration:.01ms!important}}

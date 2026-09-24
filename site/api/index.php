@@ -7,6 +7,7 @@ define('AQUA', 1);
 require __DIR__ . '/lib/util.php';
 require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/auth.php';
+require __DIR__ . '/lib/gpu.php';
 
 set_error_handler(function ($no, $str, $file, $line) {
     error_log("[aquachord] $str @ $file:$line");
@@ -280,6 +281,14 @@ route($method, '/settings', 'PUT', $path, function () use ($b) {
     audit((int) $me['id'], 'settings_update', '');
     send_json(['settings' => all_settings()]);
 });
+
+/* ---------------- GPU transcribe ผ่าน aixman (แอดมินเท่านั้น — docs/09 §3) ---------------- */
+route($method, '/gpu/config', 'GET', $path, function () { gpu_route_get_config(); });
+route($method, '/gpu/config', 'PUT', $path, function () use ($b) { gpu_route_put_config($b); });
+route($method, '/gpu/jobs', 'GET', $path, function () { gpu_route_list_jobs(); });
+route($method, '/gpu/jobs', 'POST', $path, function () { gpu_route_create_job(); });
+route($method, '/gpu/jobs/{id}', 'GET', $path, function ($a) { gpu_route_get_job($a['id']); });
+route($method, '/gpu/jobs/{id}', 'DELETE', $path, function ($a) { gpu_route_cancel_job($a['id']); });
 
 /* ---------------- public (สำหรับ frontend) ---------------- */
 route($method, '/catalog', 'GET', $path, function () {
