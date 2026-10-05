@@ -268,8 +268,46 @@ function testLayout() {
   ], 12);
   t(cleaned.length === 2, 'cleanChunks ควรเหลือ 2 (ฮุค×2) ได้ ' + cleaned.length + ': ' + JSON.stringify(cleaned.map((c) => c.text)));
 
+  // Whisper วนคำเดิมบนดนตรีล้วน (ข้อความจริงจากเทสต์ในเบราว์เซอร์) → ทิ้งทั้งก้อน
+  const loopOnly = DSP.cleanChunks([
+    { t0: 0, t1: 30, text: 'ที่สุด'.repeat(90) + 'ท' },
+    { t0: 30, t1: 60, text: 'เจ้า ' + 'ที่นี่ '.repeat(60) },
+    { t0: 60, t1: 62, text: '!!!!!!!!!!!!' },
+  ], 62);
+  t(loopOnly.length === 0, 'ก้อนที่มีแต่คำวนต้องถูกทิ้ง ได้ ' + JSON.stringify(loopOnly.map((c) => c.text)));
+  // ลูปกลางเนื้อร้องจริง: เก็บเนื้อร้อง ตัดส่วนวนเหลือ 2 รอบ
+  const mid = DSP.cleanChunks([{ t0: 0, t1: 20, text: 'เดินทางไกลแค่ไหนก็ยังมีรอยทาง' + 'ของตัว'.repeat(40) + 'ย้อนเวลาอีกสักครั้ง' }], 20);
+  t(mid.length === 1 && mid[0].text === 'เดินทางไกลแค่ไหนก็ยังมีรอยทางของตัวของตัวย้อนเวลาอีกสักครั้ง',
+    'ลูปกลางบรรทัดต้องเหลือ 2 รอบโดยเนื้อร้องรอบข้างอยู่ครบ ได้ ' + JSON.stringify(mid.map((c) => c.text)));
+  // คำซ้ำตามธรรมชาติของเพลงต้องไม่โดนแตะ
+  ['ลา ลา ลา ลา', 'รักเธอ รักเธอ รักเธอ', 'So hold on, hold on, the morning\'s coming soon',
+    'Baby baby baby oh', 'นา นา นา นา นะ', 'เบาๆ ค่อยๆ ช้าๆ', 'ฮ่าฮ่าฮ่าฮ่า',
+    'ไม่ต้องห่วงฉันหรอกนะวันนี้ฉันยังไหว ถึงแม้ใจจะเจ็บแค่ไหนก็ต้องเดินต่อไป'].forEach((s) => {
+    const r = DSP.collapseRepeats(s);
+    t(r.text === s && r.cover === 0, 'คำซ้ำปกติถูกยุบ: "' + s + '" → "' + r.text + '"');
+  });
+  // คำหลอน/เครดิตซับไตเติล (รูปแบบต่าง ๆ) ทิ้ง · เนื้อร้องที่มีคำคล้ายกันเก็บไว้
+  const junk = DSP.cleanChunks([
+    { t0: 0, t1: 1, text: 'Thank you.' }, { t0: 1, t1: 2, text: 'ขอบคุณที่รับชมค่ะ' },
+    { t0: 2, t1: 3, text: 'ซับไตเติ้ลโดย ทีมงาน' }, { t0: 3, t1: 4, text: 'Subtitles by the Amara.org community' },
+    { t0: 4, t1: 5, text: 'กดติดตามช่องด้วยนะคะ' }, { t0: 5, t1: 6, text: '(ดนตรี)' }, { t0: 6, t1: 7, text: '...' },
+    { t0: 7, t1: 9, text: 'ขอบคุณที่เธอเคยรักกัน' }, { t0: 9, t1: 11, text: 'Thank you for the music and the love' },
+  ], 11);
+  t(junk.length === 2 && junk[0].text === 'ขอบคุณที่เธอเคยรักกัน' && junk[1].text === 'Thank you for the music and the love',
+    'กรองคำหลอนผิด ได้ ' + JSON.stringify(junk.map((c) => c.text)));
+  // เศษลูปที่ Whisper ดิ้นหนีตัวกันลูปจนไม่ซ้ำเป๊ะ (ข้อความจริงจากเบราว์เซอร์) → ทิ้ง · ท่อนซ้ำธรรมชาติ → เก็บ
+  const fuzzy = DSP.cleanChunks([
+    { t0: 0, t1: 30, text: 'ที่สุดที่สุดที่สุดที่สุด ที่สุดที่สุดที่สุดที่สุด ที่สุดที่สุดที่สุดที่สุด' },
+    { t0: 30, t1: 60, text: 'เจ้า ที่นี่ ที่นี่ ที่นี่ ที่นี่สุด ที่นี่ ที่นี่ ที่นี่ ที่นี่สุด ที่นี่ ที่นี่ ที่นี่ ที่นี่ สุดที่นี่ ที่นี่ ที่นี่ ที่นี่ สุดที่นี่ ที่สุดที่สุด' },
+  ], 60);
+  t(fuzzy.length === 0, 'เศษลูปไม่เป๊ะต้องถูกทิ้ง ได้ ' + JSON.stringify(fuzzy.map((c) => c.text)));
+  const natural = ['รักเธอ รักเธอ รักเธอ หมดใจ', 'คิดถึง คิดถึง คิดถึงเธอ คิดถึงเธอทุกวัน', 'Baby baby baby oh, like baby baby baby no',
+    'นา นา นา นา นา นา ลา ลา ลา', 'จำได้ดีว่าที่เราบ้างเถอะ บ้างเถอะ แค่ถ้ายักยอนเวลาต่อไปอีกสักครั้ง'];
+  const kept = DSP.cleanChunks(natural.map((text, i) => ({ t0: i * 3, t1: i * 3 + 3, text })), 20);
+  t(kept.length === natural.length && kept.every((c, i) => c.text === natural[i]), 'ท่อนซ้ำธรรมชาติโดนกรอง ได้ ' + JSON.stringify(kept.map((c) => c.text)));
+
   // บรรทัดยาวถูกตัด ≤42 grapheme
-  const long = { t0: 0, t1: 20, text: 'ลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลลล' };
+  const long = { t0: 0, t1: 20, text: 'เมื่อคืนฉันฝันเห็นเธอเดินผ่านมาตรงหน้าแล้วยิ้มให้ฉันเหมือนวันแรกที่เราได้พบกันที่ริมทะเลยามเย็น' };
   const blocks2 = DSP.layoutLyricLines([{ chord: 'C', t0: 0, t1: 20 }], [long], { bpm: 120, phase: 0, duration: 20 });
   const lines2 = blocks2.filter((b) => b.type === 'lyric');
   t(lines2.length >= 2, 'บรรทัดยาวต้องถูกตัด ได้ ' + lines2.length);

@@ -363,7 +363,10 @@
     }
 
     // 6) [ตัวเลือก] lyrics: Whisper ใน worker (เสียง 16kHz แยกเสียงร้องแล้ว)
-    let lyrChunks = null, lyricsError = null, vocalIsolated = false, lyrDevice = null;
+    // worker ตรวจเสียงร้องด้วย VAD ก่อน (ไม่มี → ไม่รัน Whisper) + กันลูป/งบเวลาระหว่างถอด
+    // lyrNote (ไม่บันทึกลง SongDoc): 'partial' = เลยงบเวลา ได้เนื้อร้องบางส่วน · 'timeout' = เลยงบแล้วไม่ได้อะไรเลย ·
+    // 'unclear' = มีเสียงร้องแต่โมเดลถอดเป็นคำไม่ได้
+    let lyrChunks = null, lyricsError = null, vocalIsolated = false, lyrDevice = null, lyrInfo = null, lyrNote = null;
     // full: Demucs บอกว่า stem เสียงร้องเงียบ (เพลงบรรเลง ~−70dB · มีเสียงร้อง ~0dB เทียบมิกซ์) → ข้าม Whisper
     // (บนเพลงบรรเลง Whisper วนสร้างข้อความมั่วได้หลายนาที) ผลเท่ากับ "ไม่พบเนื้อร้อง"
     const noVocals = !!(sep && sep.level && Number.isFinite(sep.level.vocals) && sep.level.vocals < -40);
@@ -378,26 +381,34 @@
         const pcm16 = vox.data;
         vocalIsolated = vox.isolated;
         chk(ctl);
-        P('lyrics', 0.04, I18N.t('job.lyr.dl'));
+        P('lyrics', 0.04, I18N.t('job.lyr.vad'));
+        let asrPct = null;
         const res = await Lyrics.transcribe(pcm16, {
           model: input.lyrics.model,
           lang: input.lyrics.lang,
           duration: seconds,
+          vad: input.lyrics.vad !== false,
           ctl,
-          // โหลดโมเดล = 4–35% ของช่วง lyrics, ถอดเสียง = 35–100%
-          onDl: (pct) => P('lyrics', 0.04 + (pct / 100) * 0.31, I18N.t('job.lyr.dl') + ' ' + pct + '%'),
+          // ตรวจเสียงร้อง = 4–8% · โหลดโมเดล = 8–35% ของช่วง lyrics · ถอดเสียง = 35–100%
+          onVad: (pct) => P('lyrics', 0.04 + (Math.min(100, pct) / 100) * 0.04, I18N.t('job.lyr.vad') + (pct ? ' ' + pct + '%' : '')),
+          onDl: (pct) => P('lyrics', 0.08 + (pct / 100) * 0.27, I18N.t('job.lyr.dl') + ' ' + pct + '%'),
           onDevice: (d) => { lyrDevice = d; P('lyrics', 0.35, I18N.t(d === 'webgpu' ? 'job.lyr.gpu' : d === 'wasm-fallback' ? 'job.lyr.gpuFail' : 'job.lyr.cpu')); },
           onAsr: (pct, elapsed) => {
             const dv = lyrDevice === 'webgpu' ? ' · GPU' : lyrDevice ? ' · CPU' : '';
-            if (pct != null) P('lyrics', 0.35 + (pct / 100) * 0.65, I18N.t('job.lyr.asr') + ' ' + pct + '%' + dv);
-            else P('lyrics', 0.5, I18N.t('job.lyr.asr') + ' ' + fmtTime(elapsed || 0) + dv);
+            if (pct != null) asrPct = Math.max(asrPct || 0, pct);
+            const f = asrPct != null ? 0.35 + (asrPct / 100) * 0.65 : 0.5;
+            P('lyrics', f, I18N.t('job.lyr.asr') + (asrPct != null ? ' ' + asrPct + '%' : '') + (elapsed ? ' · ' + fmtTime(elapsed) : '') + dv);
           },
         });
         lyrChunks = res.chunks;
+        lyrInfo = res.info;
+        if (lyrInfo && lyrInfo.guard && lyrInfo.guard.overBudget) lyrNote = 'partial';
       } catch (e) {
         if (ctl && ctl.aborted) throw new Error('cancelled');
         if (e && e.message === 'cancelled') throw e;
-        lyricsError = (e && e.code) || 'run'; // ถอดเนื้อร้องพังไม่ทำให้ทั้งงานล้ม — ได้คอร์ดล้วน
+        // ถอดเนื้อร้องพังไม่ทำให้ทั้งงานล้ม — ได้คอร์ดล้วน · ค้างเกินงบ (ถูกปิด worker) ใช้รหัส 'run' เดิมของ SongDoc
+        if (e && e.code === 'timeout') { lyricsError = 'run'; lyrNote = 'timeout'; }
+        else lyricsError = (e && e.code) || 'run';
       }
     }
     chk(ctl);
@@ -442,6 +453,10 @@
       chordpro = assembleWithLyrics(segs, lyrChunks, bpm, phase, seconds, key, title);
     }
     if (!chordpro) chordpro = assembleChordPro(segs, bpm, seconds, key, title, phase);
+    // เลยงบเวลาแล้วไม่เหลือเนื้อร้องเลย ≠ "ไม่พบเสียงร้อง" → แจ้งว่าถอดไม่สำเร็จ
+    if (lyrNote === 'partial' && !lyricsText) { lyricsError = 'run'; lyrNote = 'timeout'; }
+    // VAD มั่นใจว่ามีเสียงร้องแต่ถอดแล้วไม่เหลือคำจริง (เช่น whisper-base กับเพลงไทยได้แค่ "[เสียงดนตรี]") → แนะนำโมเดลใหญ่ขึ้น
+    if (withLyrics && !lyricsError && !lyricsText && !lyrNote && lyrInfo && (lyrInfo.vocals === 'yes' || lyrInfo.vocals === 'maybe')) lyrNote = 'unclear';
     const lyricsEmpty = withLyrics && !lyricsError && !lyricsText;
     const timeline = segs
       .filter((s) => s.chord)
@@ -474,6 +489,9 @@
     };
     if (lyricsError) doc.lyricsError = lyricsError;
     if (lyricsEmpty) doc.lyricsEmpty = true;
+    // นอก SongDoc (แอปลบก่อนบันทึก): เหตุผลละเอียดสำหรับ toast + สถิติ VAD/ตัวกันลูปไว้ดีบัก
+    if (lyrNote) doc._lyricsNote = lyrNote;
+    if (lyrInfo) doc._lyrDebug = lyrInfo;
     if (riff) doc._riff = riff;
     if (riffError) doc._riffError = riffError;
     // แทร็กเครื่องดนตรีเก็บนอก SongDoc เหมือน _riff (แอปย้ายไป IndexedDB แล้วลบออกก่อนบันทึก)

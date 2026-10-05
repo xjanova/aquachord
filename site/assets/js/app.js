@@ -626,7 +626,9 @@
           // แท็บโซโล่/ริฟฟ์เก็บแยกจาก SongDoc (สัญญากลางห้ามเปลี่ยนโดยไม่บัมป์ schemaVersion)
           const riff = doc._riff, riffErr = doc._riffError;
           const tracks = doc._tracks, tracksErr = doc._tracksError, tracksFallback = doc._tracksFallback;
+          const lyrNote = doc._lyricsNote;
           delete doc._riff; delete doc._riffError; delete doc._tracks; delete doc._tracksError; delete doc._tracksFallback;
+          delete doc._lyricsNote; delete doc._lyrDebug;
           const saveTracks = (id) => {
             if (!tracks || !Array.isArray(tracks.tracks) || !tracks.tracks.length || !window.TrackStore) return Promise.resolve(false);
             return TrackStore.put(id, tracks);
@@ -669,13 +671,14 @@
           });
           pickedFile = null;
           st.doc = doc;
-          const msg = doc.lyricsError ? (t('lyrics.err.' + doc.lyricsError) || t('lyrics.err.run'))
+          const msg = lyrNote ? t('lyrics.' + lyrNote)
+            : doc.lyricsError ? (t('lyrics.err.' + doc.lyricsError) || t('lyrics.err.run'))
             : doc.lyricsEmpty ? t('lyrics.none') : t('job.done');
           refreshShell();
           if (GD()) GD().cheer(tf('guide.jobDone', { title: doc.title }));
           if (curRoute === 'job') {
             this.st = null;
-            toast(msg, { kind: doc.lyricsError ? 'warn' : 'ok' });
+            toast(msg, { kind: doc.lyricsError || lyrNote ? 'warn' : 'ok' });
             location.hash = '#/song/' + doc.id;
           } else {
             toast(msg, { kind: 'ok', action: { label: t('job.open'), run: () => { this.st = null; location.hash = '#/song/' + doc.id; } } });

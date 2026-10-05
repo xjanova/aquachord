@@ -1,5 +1,6 @@
 /* lyrics.js — สะพานฝั่ง main thread ไปหา Whisper worker (lyrics-worker.js)
-   Lyrics.transcribe(pcm16k, {model, lang, duration, onDl, onAsr, ctl}) → {chunks, text}
+   Lyrics.transcribe(pcm16k, {model, lang, duration, vad, onDl, onVad, onAsr, ctl}) → {chunks, text, info}
+   info: { vad: {peak, frac, ms} | null, skipped (ไม่มีเสียงร้อง → ไม่ได้รัน Whisper), guard: {loops, cut, capped, skipped, overBudget} }
    - worker ถูกเก็บไว้ใช้ซ้ำ (โมเดลค้างในหน่วยความจำ → เพลงถัดไปไม่ต้องโหลดใหม่)
    - ยกเลิกจริงได้กลางทางด้วยการ terminate worker (ctl.aborted จาก UI) */
 (function () {
@@ -72,6 +73,10 @@
 
   function err(code) { const e = new Error(code); e.code = code; return e; }
 
+  // worker หยุดตัวเองเมื่อเลยงบเวลา (คืนเนื้อร้องเท่าที่ได้) — ตัวนี้กันกรณีค้างอยู่ในการคำนวณครั้งเดียว
+  // (เช่น GPU ค้าง) ที่ worker ไม่มีจังหวะได้เช็กเวลา: เลยงบ + เผื่อ → ปิด worker ทิ้ง
+  const HARD_GRACE_SEC = 120;
+
   function transcribe(pcm, opts) {
     opts = opts || {};
     const model = MODELS[opts.model] ? opts.model : 'base';
@@ -81,9 +86,10 @@
       try { w = ensureWorker(); } catch (e) { reject(err('load')); return; }
       busy = true;
       const id = ++seq;
-      let watch = 0;
+      let watch = 0, hard = 0;
       const cleanup = () => {
         clearInterval(watch);
+        clearTimeout(hard);
         busy = false;
         if (worker) {
           worker.removeEventListener('message', onMsg);
@@ -94,9 +100,14 @@
         const m = ev.data || {};
         if (m.id != null && m.id !== id) return;
         if (m.type === 'dl') { if (opts.onDl) opts.onDl(m.pct); }
+        else if (m.type === 'vad') { if (opts.onVad) opts.onVad(m.pct); }
         else if (m.type === 'device') { api.lastDevice = m.device; if (opts.onDevice) opts.onDevice(m.device, m.model); }
+        else if (m.type === 'budget') {
+          clearTimeout(hard);
+          hard = setTimeout(() => { cleanup(); killWorker(); reject(err('timeout')); }, (m.sec + Math.max(HARD_GRACE_SEC, m.sec * 0.5)) * 1000);
+        }
         else if (m.type === 'asr') { if (opts.onAsr) opts.onAsr(m.pct, m.elapsed); }
-        else if (m.type === 'done') { cleanup(); resolve({ chunks: m.chunks || [], text: m.text || '' }); }
+        else if (m.type === 'done') { cleanup(); resolve({ chunks: m.chunks || [], text: m.text || '', info: m.info || null }); }
         else if (m.type === 'error') {
           cleanup();
           const e = err(m.code === 'load' ? 'load' : 'run');
@@ -120,6 +131,7 @@
           repo: MODELS[model].repo,
           gpuOnly: !!MODELS[model].gpuOnly,
           duration: opts.duration || 0,
+          vad: opts.vad !== false,
         }, [pcm.buffer]);
       } catch (e) {
         cleanup(); killWorker(); reject(err('load'));

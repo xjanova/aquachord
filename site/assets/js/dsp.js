@@ -663,16 +663,57 @@
   }
 
   // ประโยคหลอนที่ Whisper ชอบเติมช่วงเงียบ/ท้ายเพลง — ตัดทิ้งเมื่อทั้ง chunk คือข้อความนี้
+  // เทียบแบบตัดช่องว่าง/วรรคตอน/สัญลักษณ์ + ตัวพิมพ์เล็ก ("Thank you." = "thank you" = "THANK YOU!")
+  const junkKey = (s) => String(s).toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
   const JUNK = new Set([
-    'ขอบคุณครับ', 'ขอบคุณค่ะ', 'ขอบคุณมากครับ', 'ขอบคุณมากค่ะ',
-    'ขอบคุณที่รับชม', 'ขอบคุณที่รับชมครับ', 'ขอบคุณที่รับชมค่ะ',
-    'ขอบคุณสำหรับการรับชม', 'ขอบคุณสำหรับการรับชมครับ',
+    'ขอบคุณครับ', 'ขอบคุณค่ะ', 'ขอบคุณมากครับ', 'ขอบคุณมากค่ะ', 'ขอบคุณนะครับ', 'ขอบคุณนะคะ',
+    'ขอบคุณที่รับชม', 'ขอบคุณที่รับชมครับ', 'ขอบคุณที่รับชมค่ะ', 'ขอบคุณที่รับชมนะครับ', 'ขอบคุณที่รับชมนะคะ',
+    'ขอบคุณสำหรับการรับชม', 'ขอบคุณสำหรับการรับชมครับ', 'ขอบคุณสำหรับการรับชมค่ะ',
     'ฝากกดไลก์กดแชร์ด้วยนะครับ', 'ฝากกดไลค์กดแชร์ด้วยนะคะ', 'กดไลก์กดแชร์',
     'สวัสดีครับ', 'สวัสดีค่ะ', 'แล้วพบกันใหม่', 'แล้วเจอกันใหม่',
-    'thank you.', 'thank you', 'thanks for watching.', 'thanks for watching!',
-    'thanks for watching', 'please subscribe', 'subscribe',
-    '[เพลง]', '(เพลง)', '[ดนตรี]', '(ดนตรี)', '[music]', '(music)', '♪', '♪♪', '♫',
-  ]);
+    'thank you', 'thank you very much', 'thanks for watching', 'thank you for watching',
+    'please subscribe', 'subscribe',
+    'เพลง', 'ดนตรี', 'music', 'เสียงดนตรี', 'เสียงเพลง',
+  ].map(junkKey));
+  // เครดิตซับไตเติล/ช่อง YouTube ที่ Whisper จำมาจากข้อมูลฝึก — ข้อความสั้นที่มีวลีพวกนี้ไม่ใช่เนื้อเพลง
+  const JUNK_RE = /(sub(title)?s?\s*(by|โดย)|subtitled\s*by|captions?\s*by|translated\s*by|amara\.org|subscribe|thanks?\s*(you\s*)?for\s*watching|ซับ(ไตเติ้?ล|ไทย)?\s*โดย|คำบรรยาย(ไทย)?\s*โดย|แปล(ไทย)?\s*โดย|ถอดความโดย|เรียบเรียงโดย|ติดตามช่อง|กดติดตาม|กดกระดิ่ง|กด\s*(ไลก์|ไลค์|like)|ขอบคุณ(ที่|สำหรับการ)รับชม|(โปรด)?ติดตามตอนต่อไป)/i;
+
+  /* Whisper บนดนตรีล้วนชอบวนคำเดิมไม่จบ ("ที่สุดที่สุดที่สุด…") — หน่วยเดียวกัน (1–40 grapheme)
+     ซ้ำติดกัน ≥ 8 รอบ หรือหน่วยยาว ≥ 4 grapheme ซ้ำ ≥ 4 รอบรวม ≥ 16 grapheme → เหลือ 2 รอบ
+     เนื้อร้องจริงซ้ำพยางค์เดียวได้หลายรอบ ("นา นา นา นา นา นา") แต่คำยาว/วลีซ้ำเป๊ะ ≥ 4 รอบติดแทบไม่มี
+     (เศษลูปสั้นที่ตัวกันลูปใน lyrics-worker.js ตัดไว้ ถ้าทั้งก้อนเป็นลูปจะโดนเกณฑ์ textDiversity ด้านล่าง)
+     cover = สัดส่วนข้อความเดิมที่เป็นส่วนวน · rest = จำนวนตัวอักษรนอกส่วนวน (ไว้ตัดสินว่าเหลือเนื้อร้องจริงไหม) */
+  function collapseRepeats(text) {
+    const g = graphemes(text), n = g.length;
+    const same = (a, b, p) => { for (let k = 0; k < p; k++) if (g[a + k] !== g[b + k]) return false; return true; };
+    const out = [];
+    let covered = 0, rest = '';
+    for (let i = 0; i < n; ) {
+      let bp = 0, br = 0;
+      for (let p = 1; p <= 40 && i + 2 * p <= n; p++) {
+        let r = 1;
+        while (i + (r + 1) * p <= n && same(i, i + r * p, p)) r++;
+        if (((p >= 4 && r >= 4 && r * p >= 16) || r >= 8) && r * p > br * bp) { bp = p; br = r; }
+      }
+      if (br) {
+        for (let k = 0; k < 2 * bp; k++) out.push(g[i + k]);
+        covered += br * bp;
+        i += br * bp;
+      } else { rest += g[i]; out.push(g[i++]); }
+    }
+    return { text: out.join(''), cover: n ? covered / n : 0, rest: (rest.match(/\p{L}/gu) || []).length };
+  }
+
+  /* ความหลากหลายของข้อความ = จำนวน 3-grapheme ที่ไม่ซ้ำ / ทั้งหมด (ไม่นับช่องว่าง) — คล้าย compression ratio ของ Whisper
+     วัดจริง: เนื้อร้องจริงทุกบรรทัด ≥ 0.74 · ท่อนซ้ำตามธรรมชาติ ("รักเธอ รักเธอ รักเธอ หมดใจ") 0.52–0.56 ·
+     "นา นา นา นา นา นา ลา ลา ลา" 0.31 · เศษลูปที่ Whisper ดิ้นหนีตัวกันลูป ("ที่นี่ ที่นี่สุด สุดที่นี่ …") ≤ 0.16 */
+  function textDiversity(text) {
+    const g = graphemes(String(text).replace(/\s+/g, ''));
+    if (g.length < 3) return { n: g.length, div: 1 };
+    const seen = new Set();
+    for (let i = 0; i + 3 <= g.length; i++) seen.add(g[i] + g[i + 1] + g[i + 2]);
+    return { n: g.length, div: seen.size / (g.length - 2) };
+  }
 
   function cleanChunks(chunks, duration) {
     const out = [];
@@ -680,7 +721,14 @@
       let text = String(c.text == null ? '' : c.text)
         .replace(/[♪♫]/g, ' ').replace(/\s+/g, ' ').trim();
       if (!text) return;
-      if (JUNK.has(text.toLowerCase())) return;
+      const rep = collapseRepeats(text);
+      if (rep.cover > 0 && rep.rest < 6) return; // นอกจากส่วนที่วนแทบไม่มีอะไร = หลอนทั้งก้อน
+      text = rep.text.replace(/\s+/g, ' ').trim();
+      const dv = textDiversity(text);
+      if (dv.n >= 16 && dv.div < 0.25) return; // วนคำเดิมแบบไม่เป๊ะ (ยุบด้วย collapseRepeats ไม่ได้)
+      const key = junkKey(text);
+      if (!key || JUNK.has(key)) return;
+      if (text.length <= 80 && JUNK_RE.test(text)) return;
       let t0 = +c.t0, t1 = +c.t1;
       if (!isFinite(t0) || t0 < 0) t0 = 0;
       if (!isFinite(t1) || t1 <= t0) t1 = Math.min(duration || t0 + 6, t0 + 6);
@@ -791,6 +839,6 @@
     detectTempo, analyzeChroma, decodeChords, toSegments,
     isolateCenter, prepForASR,
     detectKey, refineKeyWithChords, diatonicLabels,
-    gridRows, chordAt, graphemes, cleanChunks, layoutLyricLines,
+    gridRows, chordAt, graphemes, collapseRepeats, textDiversity, cleanChunks, layoutLyricLines,
   };
 });
