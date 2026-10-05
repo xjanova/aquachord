@@ -51,6 +51,8 @@ jobs:
         run: node tools/test-finger.cjs
       - name: เทสต์แกะไลน์หลายเครื่องดนตรี → แทร็กโน้ต (HPSS/กลอง/Basic Pitch oracle/Demucs stub/analyze hook)
         run: node tools/test-tracks.cjs
+      - name: เทสต์จัดเนื้อร้องจากผู้ใช้ให้ตรงเพลง (ถอดผิด/ท่อนซ้ำ/คอร์ดบนพยางค์)
+        run: node tools/test-lyricfix.cjs
       - name: เทสต์เขียนไฟล์ MIDI (SMF type 1 จากแทร็กโน้ต)
         run: node tools/test-midi.cjs
       - name: เทสต์โน้ตเพลง (ทำนอง → ABC/โน้ตสากล/โน้ตไทย)

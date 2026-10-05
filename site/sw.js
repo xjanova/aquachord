@@ -1,5 +1,5 @@
 /* AquaChord service worker — precache app shell, offline-first */
-const CACHE = 'aquachord-1.6.0';
+const CACHE = 'aquachord-1.7.0';
 const ASSETS = [
   './',
   './index.html',
@@ -15,6 +15,7 @@ const ASSETS = [
   './assets/js/chordpro.js',
   './assets/js/store.js',
   './assets/js/dsp.js',
+  './assets/js/lyricfix.js',
   './assets/js/riff.js',
   './assets/js/finger.js',
   './assets/js/practice.js',
