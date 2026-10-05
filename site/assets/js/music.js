@@ -83,46 +83,130 @@
     return (parseInt(m[2], 10) + 1) * 12 + pcOf(normRoot(m[1]));
   }
 
-  /* ---------- Web Audio: Karplus-Strong pluck ---------- */
-  let ctx = null;
+  /* ---------- Web Audio ---------- */
+  let ctx = null, bus = null;
   function audioCtx() {
     if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === 'suspended') ctx.resume();
     return ctx;
   }
-
-  function pluck(midi, when, dur, vol) {
-    when = when || 0; dur = dur || 1.7; vol = vol == null ? 0.32 : vol;
+  // บัสรวม + คอมเพรสเซอร์ กันเสียงแตกเมื่อเล่นหลายโน้ตพร้อมกัน (จังหวะตีเร็ว + โซโล่)
+  function output() {
     const c = audioCtx();
-    const sr = c.sampleRate;
-    const freq = 440 * Math.pow(2, (midi - 69) / 12);
-    const N = Math.max(2, Math.round(sr / freq));
-    const len = Math.floor(sr * dur);
-    const buf = c.createBuffer(1, len, sr);
-    const out = buf.getChannelData(0);
-    const ring = new Float32Array(N);
+    if (!bus) {
+      const comp = c.createDynamicsCompressor();
+      comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 4;
+      comp.attack.value = 0.003; comp.release.value = 0.25;
+      const g = c.createGain(); g.gain.value = 0.95;
+      comp.connect(g); g.connect(c.destination);
+      bus = comp;
+    }
+    return bus;
+  }
+
+  /* ---------- เครื่องดนตรี: กีตาร์ (Karplus-Strong) / เปียโน (additive synth) ---------- */
+  let instrument = 'guitar';
+  function setInstrument(i) { instrument = i === 'piano' ? 'piano' : 'guitar'; }
+  function getInstrument() { return instrument; }
+  const KS_CACHE = new Map(), PIANO_CACHE = new Map();
+  const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+
+  // บัฟเฟอร์สายดีด แคชต่อโน้ต 3 แบบสุ่ม — จังหวะตีเร็วเรียกหลายสิบครั้งต่อวินาที
+  function ksBuffer(midi, variant) {
+    const key = midi + ':' + variant;
+    let b = KS_CACHE.get(key);
+    if (b) return b;
+    const c = audioCtx(), sr = c.sampleRate;
+    const N = Math.max(2, Math.round(sr / mtof(midi)));
+    const len = Math.floor(sr * 2.6);
+    b = c.createBuffer(1, len, sr);
+    const out = b.getChannelData(0), ring = new Float32Array(N);
     for (let i = 0; i < N; i++) ring[i] = Math.random() * 2 - 1;
     for (let i = 0; i < len; i++) {
       const j = i % N;
       out[i] = ring[j];
       ring[j] = (ring[j] + ring[(j + 1) % N]) * 0.4967;
     }
-    const src = c.createBufferSource(); src.buffer = buf;
-    const g = c.createGain();
-    g.gain.setValueAtTime(vol, c.currentTime + when);
-    g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + when + dur);
-    const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 3800;
-    src.connect(lp).connect(g).connect(c.destination);
-    src.start(c.currentTime + when);
-    src.stop(c.currentTime + when + dur);
+    KS_CACHE.set(key, b);
+    return b;
   }
+
+  // เปียโน: ฮาร์มอนิก 8 ตัว (inharmonic เล็กน้อย) สองสายเพี้ยนกันนิด ๆ + เสียงค้อนสั้น ๆ — แคชต่อโน้ต
+  function pianoBuffer(midi) {
+    let b = PIANO_CACHE.get(midi);
+    if (b) return b;
+    const c = audioCtx(), sr = c.sampleRate;
+    const f = mtof(midi);
+    const len = Math.floor(sr * 3.2);
+    b = c.createBuffer(1, len, sr);
+    const out = b.getChannelData(0);
+    const low = Math.max(0, Math.min(1, (76 - midi) / 40));
+    for (let h = 1; h <= 8; h++) {
+      const fh = f * h * Math.sqrt(1 + 0.00035 * h * h);
+      if (fh > sr * 0.45) break;
+      const amp = h === 1 ? 1 : (h === 2 ? 0.55 : 0.42 / Math.pow(h, 1.2));
+      const tau = (0.7 + 2.8 * low) / (1 + 0.6 * (h - 1));
+      const dk = Math.exp(-1 / (tau * sr));
+      const dets = h <= 2 ? [-0.0008, 0.0008] : [0];
+      for (const det of dets) {
+        const w = 2 * Math.PI * fh * (1 + det) / sr, co = Math.cos(w), si = Math.sin(w);
+        let x = 1, y = 0, e = amp / dets.length;
+        for (let i = 0; i < len; i++) { out[i] += y * e; const nx = x * co - y * si; y = x * si + y * co; x = nx; e *= dk; }
+      }
+    }
+    const atk = Math.floor(sr * 0.003), ham = Math.floor(sr * 0.012);
+    for (let i = 0; i < atk; i++) out[i] *= i / atk;
+    let n = 0;
+    for (let i = 0; i < ham; i++) { n = n * 0.6 + (Math.random() * 2 - 1) * 0.4; out[i] += n * 0.1 * (1 - i / ham); }
+    let pk = 0;
+    for (let i = 0; i < len; i++) pk = Math.max(pk, Math.abs(out[i]));
+    if (pk > 0) { const k = 0.8 / pk; for (let i = 0; i < len; i++) out[i] *= k; }
+    PIANO_CACHE.set(midi, b);
+    return b;
+  }
+
+  // เล่นโน้ตที่เวลา t0 (เวลาของ AudioContext) — o: { mute, bright, bend, bendTime, vib }
+  function noteAt(midi, t0, dur, vol, o) {
+    o = o || {};
+    const c = audioCtx();
+    const piano = instrument === 'piano' && !o.guitar;
+    const maxDur = piano ? 3.1 : 2.5;
+    dur = Math.max(0.03, Math.min(dur || 1.5, maxDur));
+    const src = c.createBufferSource();
+    src.buffer = piano ? pianoBuffer(midi) : ksBuffer(midi, (Math.random() * 3) | 0);
+    if (o.bend) {
+      src.playbackRate.setValueAtTime(Math.pow(2, -o.bend / 12), t0);
+      src.playbackRate.linearRampToValueAtTime(1, t0 + (o.bendTime || 0.12));
+    }
+    let lfo = null;
+    if (o.vib) {
+      lfo = c.createOscillator(); const lg = c.createGain();
+      lfo.frequency.value = 5.6; lg.gain.value = 0.007;
+      lfo.connect(lg).connect(src.playbackRate);
+      lfo.start(t0 + 0.12); lfo.stop(t0 + dur);
+    }
+    const lp = c.createBiquadFilter(); lp.type = 'lowpass';
+    lp.frequency.value = o.mute ? 900 : (o.bright ? 6500 : (piano ? 7000 : 3800));
+    const g = c.createGain();
+    const rel = piano ? 0.18 : (o.mute ? 0.04 : 0.08);
+    g.gain.setValueAtTime(vol, t0);
+    g.gain.setValueAtTime(vol, t0 + Math.max(0.01, dur - rel));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(lp).connect(g).connect(output());
+    src.start(t0); src.stop(t0 + dur + 0.02);
+  }
+  // เวลาแบบสัมพัทธ์ (วินาทีจากตอนนี้)
+  function note(midi, when, dur, vol, o) { noteAt(midi, audioCtx().currentTime + (when || 0), dur, vol == null ? 0.3 : vol, o); }
+  // ชื่อเดิม (กีตาร์เสมอ) — คงไว้ให้โค้ดเก่า
+  function pluck(midi, when, dur, vol) { note(midi, when, dur || 1.7, vol == null ? 0.32 : vol, { guitar: true }); }
 
   function strum(midis, gapMs) {
-    gapMs = gapMs == null ? 42 : gapMs;
-    midis.forEach((m, i) => pluck(m, (i * gapMs) / 1000, 1.9, 0.3));
+    const c = audioCtx(), t = c.currentTime + 0.01;
+    const piano = instrument === 'piano';
+    const gap = piano ? 0.006 : (gapMs == null ? 32 : gapMs) / 1000;
+    midis.forEach((m, i) => noteAt(m, t + i * gap, piano ? 1.8 : 1.9, piano ? 0.24 : 0.28));
   }
-
-  function playChord(sym) { strum(chordToMidis(sym)); }
+  function playChord(sym) { strum(chordVoicing(sym)); }
 
   /* ---------- Chord diagrams ---------- */
   // frets: index 0 = สาย E ต่ำ(6) ... 5 = E สูง(1);  -1 = mute, 0 = open
@@ -283,10 +367,246 @@
     return svg + `</svg>`;
   }
 
+  /* ---------- เสียงคอร์ดตามเครื่องดนตรี ---------- */
+  // เปียโน: เบสมือซ้าย (C2–B2) + คอร์ดตำแหน่งชิดกลางคีย์บอร์ด (ไม่เกิน 4 โน้ต)
+  function pianoVoicing(sym) {
+    const c = parseChord(sym);
+    if (!c) return [];
+    const q = normQuality(c.quality);
+    const iv = (QUALITY[q] || QUALITY[reduceQuality(q)] || QUALITY['']).slice();
+    if (iv.length > 4) iv.splice(iv.indexOf(7), 1);
+    const pc = pcOf(c.root);
+    let base = 60 + pc;
+    if (base > 66) base -= 12;
+    return [36 + (c.bass ? pcOf(c.bass) : pc)].concat(iv.map((i) => base + i));
+  }
+  function chordPcs(sym) {
+    const c = parseChord(sym);
+    if (!c) return [];
+    const q = normQuality(c.quality);
+    return (QUALITY[q] || QUALITY[reduceQuality(q)] || QUALITY['']).map((i) => (pcOf(c.root) + i) % 12);
+  }
+  function chordVoicing(sym) { return instrument === 'piano' ? pianoVoicing(sym) : voicingMidis(sym); }
+
+  /* ---------- จังหวะการตี / เกา หลายสไตล์ ----------
+     ตัวอักษรต่อช่องจังหวะ: D ตีลงเต็ม · d ตีลงเบา (สายบน) · U ตีขึ้น · X ตบสายบอด · C สับคอร์ดสั้น
+     B เบสตัวต้น · b เบสสลับ · p i m a = นิ้วโป้ง/ชี้/กลาง/นาง (เกา) · . = เว้น */
+  const PATTERNS = [
+    { id: 'single', grid: 0, th: 'ทีละคอร์ด', en: 'One strum per chord' },
+    { id: 'pop', meter: 4, grid: 8, steps: 'D.DU.UDU', th: 'ป๊อป', en: 'Pop' },
+    { id: 'ballad', meter: 4, grid: 8, steps: 'pimiaimi', th: 'บัลลาด (เกา)', en: 'Ballad picking' },
+    { id: 'slowrock', meter: 4, grid: 12, steps: 'pimamipimami', th: 'สโลว์ร็อก', en: 'Slow rock (12/8)' },
+    { id: 'rock', meter: 4, grid: 8, steps: 'DDDDDDDD', pm: true, th: 'ร็อก', en: 'Rock 8ths' },
+    { id: 'lukthung', meter: 4, grid: 8, steps: 'B.C.b.C.', th: 'ลูกทุ่ง / รำวง', en: 'Luk thung boom-chick' },
+    { id: 'reggae', meter: 4, grid: 8, steps: '.C.C.C.C', th: 'เร็กเก้ / สกา', en: 'Reggae / ska' },
+    { id: 'bossa', meter: 4, grid: 8, steps: 'B.CCb.C.', th: 'บอสซาโนวา', en: 'Bossa nova' },
+    { id: 'travis', meter: 4, grid: 8, steps: 'BmbiBmba', th: 'โฟล์ก (แทรวิส)', en: 'Folk (Travis)' },
+    { id: 'waltz', meter: 3, grid: 6, steps: 'B.C.C.', th: 'วอลทซ์ 3/4', en: 'Waltz 3/4' },
+  ];
+  const GLYPH = { D: '↓', d: '⇣', U: '↑', X: '×', C: '⤓', B: 'B', b: 'b', p: 'P', i: 'i', m: 'm', a: 'a', '.': '·' };
+  function countLabels(p) {
+    if (!p.grid) return [];
+    if (p.grid === 12) return ['1', 't', 'a', '2', 't', 'a', '3', 't', 'a', '4', 't', 'a'];
+    const out = [];
+    for (let b = 1; b <= p.meter; b++) out.push(String(b), '&');
+    return out;
+  }
+
+  // เล่นหนึ่งช่องจังหวะของคอร์ด v (โน้ตเรียงต่ำ→สูง)
+  function playStep(tok, v, at, step, accent, pm) {
+    if (!v.length || tok === '.') return;
+    const piano = instrument === 'piano';
+    const n = v.length, hi = v.slice(Math.max(1, n - 4));
+    const ring = Math.min(2.2, step * (piano ? 2.2 : 3));
+    const acc = accent ? 1.15 : 1;
+    if (piano) {
+      const up = v.slice(1);
+      if (tok === 'D') { noteAt(v[0], at, ring * 1.4, 0.24 * acc); up.forEach((m) => noteAt(m, at + 0.004, ring, 0.17 * acc)); }
+      else if (tok === 'd' || tok === 'U') up.forEach((m) => noteAt(m, at, ring * 0.8, 0.12));
+      else if (tok === 'X') up.forEach((m) => noteAt(m, at, 0.07, 0.12));
+      else if (tok === 'C') up.forEach((m) => noteAt(m, at, Math.min(0.16, step * 0.8), 0.16 * acc));
+      else if (tok === 'B' || tok === 'p') noteAt(v[0], at, step * 3.5, 0.26 * acc);
+      else if (tok === 'b') noteAt(v[0] + 7 > 52 ? v[0] - 5 : v[0] + 7, at, step * 3, 0.22);
+      else { const k = { i: 0, m: 1, a: 2 }[tok]; const m = up[Math.min(up.length - 1, k)]; if (m != null) noteAt(m, at, step * 4, 0.2); }
+      return;
+    }
+    const gap = 0.011;
+    if (tok === 'D') {
+      const notes = pm ? v.slice(0, Math.min(3, n)) : v;
+      notes.forEach((m, i) => noteAt(m, at + i * gap, pm ? 0.18 : ring, (pm ? 0.24 : 0.25) * acc, { mute: pm }));
+    } else if (tok === 'd') hi.forEach((m, i) => noteAt(m, at + i * 0.009, ring * 0.8, 0.15));
+    else if (tok === 'U') hi.slice().reverse().forEach((m, i) => noteAt(m, at + i * 0.009, ring * 0.8, 0.16));
+    else if (tok === 'X') { v.forEach((m, i) => noteAt(m, at + i * 0.004, 0.05, 0.16, { mute: true })); }
+    else if (tok === 'C') hi.forEach((m, i) => noteAt(m, at + i * 0.006, Math.min(0.13, step * 0.7), 0.2 * acc, { mute: false }));
+    else if (tok === 'B' || tok === 'p') noteAt(v[0], at, step * 3.5, 0.3 * acc);
+    else if (tok === 'b') noteAt(v[Math.min(1, n - 1)], at, step * 3, 0.26);
+    else { const idx = { i: n - 3, m: n - 2, a: n - 1 }[tok]; noteAt(v[Math.max(0, idx)], at, step * 4, 0.24); }
+  }
+
+  // RNG ที่กำหนด seed ได้ — เพลงเดิมได้ลูกเล่นแบบเดิมทุกครั้ง
+  function rng(seed) {
+    let a = seed >>> 0 || 1;
+    return function () { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  // ลูกเล่นโซโล่: ทำนองเพนทาโทนิกตามคีย์ ถาม-ตอบทุก 4 ห้อง เข้าหาโน้ตในคอร์ดตอนเปลี่ยนคอร์ด
+  // พร้อมเบนด์/สไลด์/ไวเบรโตแบบกีตาร์โซโล่
+  function leadLine(seq, chordAt, o) {
+    const r = rng(o.seed || 7);
+    const km = String(o.key || (seq[0] && seq[0].chord) || 'C').match(/^([A-G][#b]?)(m?)/) || [0, 'C', ''];
+    const tonic = pcOf(normRoot(km[1])) || 0;
+    const scale = (km[2] ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 9]).map((x) => (x + tonic) % 12);
+    const piano = instrument === 'piano';
+    const lo = piano ? 67 : 64, hi = piano ? 86 : 84;
+    const pool = [];
+    for (let m = lo; m <= hi; m++) if (scale.includes(m % 12)) pool.push(m);
+    const RHY = ['10110100', '10101010', '11011000', '10010110', '00101101', '11101000', '10100111'];
+    const step = o.beat / 2, perBar = 8 * o.meter / 4;
+    const bars = Math.ceil(o.end / (step * perBar));
+    let pi = Math.floor(pool.length / 2);
+    const notes = [];
+    for (let b = 0; b < bars; b++) {
+      if (b % 4 === 2) continue;
+      const rh = RHY[Math.floor(r() * RHY.length)];
+      const ons = [];
+      for (let s = 0; s < perBar; s++) if (rh[s % 8] === '1') ons.push(s);
+      ons.forEach((s, k) => {
+        const t = (b * perBar + s) * step;
+        if (t >= o.end) return;
+        const ch = chordAt(t);
+        const tones = ch ? chordPcs(ch) : [];
+        if ((s % 4 === 0 || k === 0) && tones.length) {
+          let best = pi, bd = 99;
+          pool.forEach((m, j) => { if (tones.includes(m % 12) && Math.abs(j - pi) < bd) { bd = Math.abs(j - pi); best = j; } });
+          pi = best;
+        } else {
+          const x = r();
+          const dir = pi > pool.length * 0.7 ? -1 : pi < pool.length * 0.3 ? 1 : (r() < 0.5 ? -1 : 1);
+          pi = Math.max(0, Math.min(pool.length - 1, pi + (x < 0.5 ? dir : x < 0.8 ? 2 * dir : 0)));
+        }
+        const next = ons[k + 1] != null ? ons[k + 1] : perBar;
+        const d = Math.min((next - s) * step * 0.95, o.beat * 1.5);
+        const tech = {};
+        if (!piano) {
+          if (d >= o.beat * 0.9 && r() < 0.35) { tech.bend = 2; tech.bendTime = 0.14; }
+          else if (d >= o.beat * 0.9) tech.vib = true;
+          else if (r() < 0.12) { tech.bend = 1; tech.bendTime = 0.05; }
+          tech.bright = true;
+        }
+        notes.push({ t, d, midi: pool[pi], tech });
+      });
+    }
+    return notes;
+  }
+
+  /* ตัวเล่นจังหวะ: จัดคิวด้วยนาฬิกาของ Web Audio (แม่นกว่า setTimeout) มองล่วงหน้า 0.25 วินาที
+     o: { seq:[{t, chord, label}], end, bpm, pattern, solo, key, seed, repeat, onChord(i), onStep(k), onEnd() } */
+  const R = { on: false, gen: 0, timer: 0 };
+  function rhythmStop() { R.on = false; R.gen++; clearTimeout(R.timer); }
+  function rhythmPlay(o) {
+    rhythmStop();
+    const gen = R.gen;
+    const c = audioCtx();
+    const pat = PATTERNS.find((p) => p.id === o.pattern) || PATTERNS[1];
+    const bpm = Math.max(40, Math.min(220, +o.bpm || 90));
+    const beat = 60 / bpm, meter = pat.meter || 4;
+    const seq = (o.seq || []).filter((e) => isChord(e.chord));
+    if (!seq.length) return false;
+    const reps = Math.max(1, o.repeat || 1);
+    const span = o.end || (seq[seq.length - 1].t + beat * meter);
+    const chordIdxAt = (t) => { let i = 0; while (i + 1 < seq.length && seq[i + 1].t <= t + 1e-6) i++; return i; };
+    const voices = new Map();
+    const voiceOf = (i) => { if (!voices.has(i)) voices.set(i, chordVoicing(seq[i].chord)); return voices.get(i); };
+    const events = [];
+    for (let rep = 0; rep < reps; rep++) {
+      const off = rep * span;
+      if (!pat.grid) {
+        seq.forEach((e, i) => events.push({ t: off + e.t, kind: 'chord', i, d: Math.min(2.4, ((seq[i + 1] ? seq[i + 1].t : span) - e.t) || 2) }));
+      } else {
+        const step = beat * meter / pat.grid;
+        for (let k = 0; k * step < span - 1e-6; k++) {
+          const t = k * step;
+          events.push({ t: off + t, kind: 'step', k: k % pat.grid, tok: pat.steps[k % pat.grid], i: chordIdxAt(t + step * 0.5), step, accent: k % pat.grid === 0 });
+        }
+      }
+      if (o.solo) {
+        leadLine(seq, (t) => seq[chordIdxAt(t)].chord, { key: o.key, seed: o.seed, beat, meter, end: span })
+          .forEach((n) => events.push({ t: off + n.t, kind: 'lead', n }));
+      }
+    }
+    events.sort((a, b) => a.t - b.t);
+    const t0 = c.currentTime + 0.12;
+    let idx = 0, lastI = -1;
+    R.on = true;
+    const ui = (fn, at) => setTimeout(() => { if (R.on && R.gen === gen) fn(); }, Math.max(0, (at - c.currentTime) * 1000));
+    const pump = () => {
+      if (!R.on || R.gen !== gen) return;
+      const horizon = c.currentTime + 0.25;
+      while (idx < events.length && t0 + events[idx].t < horizon) {
+        const ev = events[idx++], at = t0 + ev.t;
+        if (ev.kind === 'lead') {
+          const n = ev.n;
+          noteAt(n.midi, at, n.d + 0.25, instrument === 'piano' ? 0.2 : 0.3, Object.assign({ guitar: false }, n.tech));
+          continue;
+        }
+        const v = voiceOf(ev.i);
+        if (ev.kind === 'chord') v.forEach((m, j) => noteAt(m, at + j * (instrument === 'piano' ? 0.005 : 0.03), ev.d, instrument === 'piano' ? 0.22 : 0.27));
+        else playStep(ev.tok, v, at, ev.step, ev.accent, pat.pm);
+        if (ev.i !== lastI) { lastI = ev.i; const i = ev.i; if (o.onChord) ui(() => o.onChord(i), at); }
+        if (ev.kind === 'step' && o.onStep) { const k = ev.k; ui(() => o.onStep(k), at); }
+      }
+      if (idx >= events.length) {
+        const endAt = t0 + (events.length ? events[events.length - 1].t : 0) + 1.2;
+        R.timer = setTimeout(() => { if (R.gen === gen) { R.on = false; if (o.onEnd) o.onEnd(); } }, Math.max(0, (endAt - c.currentTime) * 1000));
+        return;
+      }
+      R.timer = setTimeout(pump, 45);
+    };
+    pump();
+    return true;
+  }
+
+  /* ---------- ไดอะแกรมคีย์เปียโน (2 ช่วงเสียง) ---------- */
+  const WHITE = [0, 2, 4, 5, 7, 9, 11];
+  function pianoSVG(sym, opts) {
+    opts = opts || {};
+    const scale = opts.scale || 1;
+    const v = pianoVoicing(sym);
+    const label = String(sym).replace(/[<>"&]/g, '');
+    const W = 154, H = 74, kw = 11, top = 6;
+    if (!v.length) return `<svg class="pk" width="${W * scale}" height="${H * scale}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}"><text class="dg-na" x="${W / 2}" y="${H / 2 + 6}" font-size="18" text-anchor="middle" fill="#6b8a96">?</text></svg>`;
+    const up = v.slice(1);
+    const start = Math.floor(Math.min.apply(null, up) / 12) * 12;
+    const rootPc = pcOf(parseChord(sym).root);
+    const on = new Set(up);
+    let svg = `<svg class="pk" width="${W * scale}" height="${H * scale}" viewBox="0 0 ${W} ${H}" role="img" aria-label="${label}">`;
+    let wi = 0;
+    const blacks = [];
+    for (let m = start; m < start + 24; m++) {
+      const pc = m % 12;
+      if (WHITE.includes(pc)) {
+        const x = 2 + wi * kw;
+        const hit = on.has(m);
+        svg += `<rect class="pk-w${hit ? ' pk-on' : ''}" x="${x}" y="${top}" width="${kw - 1}" height="${H - top - 4}" rx="2" fill="${hit ? '#3df5d0' : '#dfeef0'}"/>`;
+        if (hit) svg += `<circle class="pk-dot${pc === rootPc ? ' pk-root' : ''}" cx="${x + (kw - 1) / 2}" cy="${H - 14}" r="3.2" fill="#03201a"/>`;
+        wi++;
+      } else blacks.push({ m, x: 2 + wi * kw - 3.5 });
+    }
+    blacks.forEach((k) => {
+      const hit = on.has(k.m);
+      svg += `<rect class="pk-b${hit ? ' pk-on' : ''}" x="${k.x}" y="${top}" width="7" height="${(H - top) * 0.6}" rx="1.5" fill="${hit ? '#3df5d0' : '#0b1622'}"/>`;
+      if (hit) svg += `<circle class="pk-dot${k.m % 12 === rootPc ? ' pk-root' : ''}" cx="${k.x + 3.5}" cy="${top + (H - top) * 0.6 - 7}" r="2.4" fill="#03201a"/>`;
+    });
+    return svg + `</svg>`;
+  }
+  function diagram(sym, opts) { return instrument === 'piano' ? pianoSVG(sym, opts) : diagramSVG(sym, opts); }
+
   window.Music = {
-    SHARP, FLAT,
+    SHARP, FLAT, PATTERNS, GLYPH,
     parseChord, isChord, transposeChord, transposeKey,
-    chordToMidis, chordNotes, voicingMidis, noteNameToMidi, pluck, strum, playChord,
-    diagramSVG, shapeFor, audioCtx,
+    chordToMidis, chordNotes, voicingMidis, pianoVoicing, chordVoicing, noteNameToMidi,
+    pluck, note, noteAt, strum, playChord,
+    setInstrument, getInstrument,
+    rhythm: { play: rhythmPlay, stop: rhythmStop, get on() { return R.on; }, countLabels },
+    diagram, diagramSVG, pianoSVG, shapeFor, audioCtx,
   };
 })();

@@ -5,11 +5,11 @@
 (function () {
   const STILL = 'assets/mascot.webp';
   const FACE = 'assets/guide/face-160.webp';
-  const CLIP_V = '1'; // บัมป์เมื่อเข้ารหัสคลิปใหม่ชื่อเดิม (CDN แคชไฟล์เก่า)
+  const CLIP_V = '2'; // บัมป์เมื่อเข้ารหัสคลิปใหม่ชื่อเดิม (CDN แคชไฟล์เก่า)
   // pad = คลิปทำจากภาพที่เติมขอบเขียว 8% → วาดใหญ่ขึ้น 16% ให้ตัวทับภาพนิ่งพอดี
   const CLIPS = {
-    idle: { loop: true, pad: false },
-    talk: { loop: true, pad: false },
+    idle: { loop: true, pad: true },
+    talk: { loop: true, pad: true },
     wave: { loop: false, pad: true },
     present: { loop: false, pad: true },
     cheer: { loop: false, pad: true },
@@ -119,6 +119,7 @@
     const v = videos[move];
     if (!clip || !canPlayAlpha() || !v || broken.has(move)) {
       if (active) { active.classList.remove('on'); active.pause(); active = null; }
+      figure.classList.remove('clip-on');
       // ไม่มีคลิปท่านี้ → ขยับภาพนิ่งด้วย CSS แทน แล้วไปต่อเร็ว ๆ (ไม่ปล่อยกล่องคำพูดว่างนาน)
       const oneOff = move !== 'idle' && move !== 'talk';
       if (oneOff && motionOn()) { still.classList.remove('react'); void still.offsetWidth; still.classList.add('react'); }
@@ -136,9 +137,11 @@
       const p = v.play();
       if (p && p.catch) p.catch((e) => {
         // AbortError = ถูก pause ทันทีหลัง play — ไม่ใช่คลิปเสีย
-        if (!e || e.name !== 'AbortError') { broken.add(move); v.classList.remove('on'); if (onEnd) onEnd(); }
+        if (!e || e.name !== 'AbortError') { broken.add(move); v.classList.remove('on'); if (active === v) { active = null; figure.classList.remove('clip-on'); } if (onEnd) onEnd(); }
       });
       active = v;
+      // เฟรมแรกของคลิป = ภาพนิ่ง → พอคลิปขึ้นแล้วซ่อนภาพนิ่งข้างใต้ (กันเงาซ้อนตอนขยับ)
+      figure.classList.add('clip-on');
       // เลเยอร์ใหม่จางเข้าทับของเก่า ซึ่งยังทึบอยู่จนจางเสร็จ (สองเลเยอร์ครึ่ง ๆ จะเห็นพื้นหลังทะลุตัว)
       if (prev && prev !== v) setTimeout(() => { if (active !== prev) { prev.classList.remove('on'); prev.pause(); } }, 260);
     };
@@ -424,7 +427,7 @@
         else if (active && !minimized && mode !== 'mini') { const p = active.play(); if (p && p.catch) p.catch(() => {}); }
       });
       // ปิด Motion → หยุดคลิป เหลือภาพนิ่ง
-      new MutationObserver(() => { if (!canPlayAlpha() && active) { active.classList.remove('on'); active.pause(); active = null; } else if (canPlayAlpha() && !active && !minimized && mode !== 'mini') show(loopMove); })
+      new MutationObserver(() => { if (!canPlayAlpha() && active) { active.classList.remove('on'); active.pause(); active = null; figure.classList.remove('clip-on'); } else if (canPlayAlpha() && !active && !minimized && mode !== 'mini') show(loopMove); })
         .observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] });
       place();
       show('idle');

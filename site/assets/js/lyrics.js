@@ -7,7 +7,55 @@
     tiny:  { repo: 'Xenova/whisper-tiny',  size: '~45 MB'  },
     base:  { repo: 'Xenova/whisper-base',  size: '~85 MB'  },
     small: { repo: 'Xenova/whisper-small', size: '~250 MB' },
+    // large-v3-turbo: แม่นที่สุดสำหรับเพลงไทย แต่ต้องมี GPU (WebGPU) — บน CPU ช้าเกินใช้งาน
+    turbo: { repo: 'onnx-community/whisper-large-v3-turbo', size: '~565–760 MB', gpuOnly: true },
   };
+
+  /* ---------- ตรวจ GPU ของเครื่องนี้ (WebGPU) — ใช้ตัดสินว่าเปิดโมเดลใหญ่ได้ไหม + บอกผู้ใช้ ----------
+     ข้อมูลอยู่ในเครื่องเท่านั้น ไม่ส่งไปไหน */
+  let gpuPromise = null;
+  function prettyRenderer(r) {
+    if (!r) return '';
+    let s = String(r);
+    const m = s.match(/^ANGLE \((.*)\)$/);
+    if (m) {
+      const parts = m[1].split(',').map((x) => x.trim());
+      s = (parts[1] || parts[0] || '').replace(/^ANGLE Metal Renderer:\s*/i, '');
+    }
+    return s.replace(/\s*\(0x[0-9a-f]+\)/ig, '').replace(/\s+(Direct3D|OpenGL|Vulkan|vs_|ps_).*$/i, '').trim().slice(0, 60);
+  }
+  function detectGPU() {
+    if (gpuPromise) return gpuPromise;
+    gpuPromise = (async () => {
+      const r = { webgpu: false, f16: false, name: '', vendor: '', arch: '', software: false, renderer: '' };
+      try {
+        const gl = document.createElement('canvas').getContext('webgl');
+        if (gl) {
+          const ext = gl.getExtension('WEBGL_debug_renderer_info');
+          r.renderer = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER) || '');
+        }
+      } catch (e) {}
+      try {
+        if (navigator.gpu) {
+          const a = await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+          if (a) {
+            let info = a.info || null;
+            if (!info && a.requestAdapterInfo) { try { info = await a.requestAdapterInfo(); } catch (e) {} }
+            info = info || {};
+            r.webgpu = !a.isFallbackAdapter;
+            r.f16 = !!(a.features && a.features.has('shader-f16'));
+            r.vendor = info.vendor || ''; r.arch = info.architecture || '';
+          }
+        }
+      } catch (e) {}
+      r.software = /swiftshader|llvmpipe|softpipe|microsoft basic render/i.test(r.renderer);
+      if (r.software) r.webgpu = false;
+      r.name = prettyRenderer(r.renderer) || [r.vendor, r.arch].filter(Boolean).join(' ');
+      return r;
+    })();
+    return gpuPromise;
+  }
+
 
   let worker = null, busy = false, seq = 0;
 
@@ -46,6 +94,7 @@
         const m = ev.data || {};
         if (m.id != null && m.id !== id) return;
         if (m.type === 'dl') { if (opts.onDl) opts.onDl(m.pct); }
+        else if (m.type === 'device') { api.lastDevice = m.device; if (opts.onDevice) opts.onDevice(m.device, m.model); }
         else if (m.type === 'asr') { if (opts.onAsr) opts.onAsr(m.pct, m.elapsed); }
         else if (m.type === 'done') { cleanup(); resolve({ chunks: m.chunks || [], text: m.text || '' }); }
         else if (m.type === 'error') {
@@ -69,6 +118,7 @@
           cmd: 'run', id, pcm,
           lang: opts.lang || 'th',
           repo: MODELS[model].repo,
+          gpuOnly: !!MODELS[model].gpuOnly,
           duration: opts.duration || 0,
         }, [pcm.buffer]);
       } catch (e) {
@@ -77,5 +127,6 @@
     });
   }
 
-  window.Lyrics = { MODELS, transcribe, reset: killWorker };
+  const api = { MODELS, transcribe, reset: killWorker, detectGPU, lastDevice: null };
+  window.Lyrics = api;
 })();

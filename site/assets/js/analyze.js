@@ -8,7 +8,13 @@
 (function () {
   const BASE_STAGES = ['ingest', 'prep', 'beats', 'chords', 'key', 'assemble'];
   const LYR_STAGES = ['ingest', 'prep', 'beats', 'chords', 'key', 'lyrics', 'assemble'];
-  function stages(withLyrics) { return withLyrics ? LYR_STAGES : BASE_STAGES; }
+  const RIFF_STAGES = ['ingest', 'prep', 'beats', 'chords', 'key', 'riff', 'assemble'];
+  const LYR_RIFF_STAGES = ['ingest', 'prep', 'beats', 'chords', 'key', 'riff', 'lyrics', 'assemble'];
+  // stages(x) แบบเดิมยังคืน array เดิมทุกประการ — withRiff เป็นพารามิเตอร์เสริม
+  function stages(withLyrics, withRiff) {
+    if (withRiff) return withLyrics ? LYR_RIFF_STAGES : RIFF_STAGES;
+    return withLyrics ? LYR_STAGES : BASE_STAGES;
+  }
 
   const TARGET_SR = 11025;        // พอสำหรับคอร์ด (สนใจแค่ 55–1900 Hz)
   const LYR_SR = 16000;           // Whisper ต้องการ 16kHz
@@ -193,10 +199,14 @@
   // สัดส่วนช่วง % ต่อ stage (มี/ไม่มีถอดเนื้อร้อง)
   const PCT_BASE = { ingest: [0, 6], prep: [6, 16], beats: [16, 30], chords: [30, 82], key: [82, 88], assemble: [88, 99] };
   const PCT_LYR = { ingest: [0, 5], prep: [5, 12], beats: [12, 20], chords: [20, 48], key: [48, 52], lyrics: [52, 92], assemble: [92, 99] };
+  // แกะริฟฟ์ใช้เวลา ~1.3–1.8 เท่าของขั้นคอร์ด (STFT hop ~12ms ทั้งเพลง — วัดจากเพลง 4 นาทีใน Node)
+  const PCT_RIFF = { ingest: [0, 4], prep: [4, 9], beats: [9, 18], chords: [18, 46], key: [46, 48], riff: [48, 96], assemble: [96, 99] };
+  const PCT_LYR_RIFF = { ingest: [0, 4], prep: [4, 8], beats: [8, 13], chords: [13, 28], key: [28, 30], riff: [30, 52], lyrics: [52, 94], assemble: [94, 99] };
 
   async function run(input, onProgress, ctl) {
     const withLyrics = !!(input.lyrics && window.Lyrics);
-    const PCT = withLyrics ? PCT_LYR : PCT_BASE;
+    const withRiff = !!input.riff;
+    const PCT = withRiff ? (withLyrics ? PCT_LYR_RIFF : PCT_RIFF) : (withLyrics ? PCT_LYR : PCT_BASE);
     const P = (stage, frac, detail) => {
       if (!onProgress) return;
       const r = PCT[stage] || [0, 99];
@@ -250,8 +260,38 @@
     const key = dec.key;
     P('key', 1);
 
+    // 5b) [ตัวเลือก] riff: แกะลายโซโล่/ริฟฟ์ (เมโลดี้เด่นเส้นเดียว) → โน้ต + สาย/เฟรต
+    // เก็บนอก SongDoc (doc._riff) — แอปลบทิ้งก่อนบันทึก จนกว่าจะขยับ schemaVersion
+    // พังเองไม่ทำให้ทั้งงานล้ม (เหมือน lyricsError) แต่ยกเลิกต้องยกเลิกจริง
+    let riff = null, riffError = null;
+    if (withRiff) {
+      try {
+        if (!window.Riff) throw new Error('riff.js not loaded');
+        P('riff', 0);
+        const rr = await Riff.extract(data, sr, Object.assign({ bpm, phase }, dspOpts('riff', 0, 0.97)));
+        chk(ctl);
+        const g = rr.grid;
+        riff = {
+          v: 1,
+          tuning: Riff.STD_TUNING.slice(),
+          notes: Riff.assignFrets(rr.notes, { capo: 0 }),
+          // สำหรับวางแท็บเป็นห้อง (toAsciiTab) — null = โน้ตไม่ลงกริด 16th → แท็บไม่มีเส้นห้อง
+          bpm: g ? Math.round(g.bpm * 100) / 100 : null,
+          phase: g ? g.phase : null,
+          voicedRatio: rr.voicedRatio,
+          monoRatio: rr.monoRatio,   // < 0.28 = ไฟล์มีแต่คอร์ด ไม่มีเส้นเมโลดี้เด่น (เก็บแค่โน้ตที่ชัดมาก)
+          tuningCents: rr.tuningCents,
+        };
+        P('riff', 1);
+      } catch (e) {
+        if (ctl && ctl.aborted) throw new Error('cancelled');
+        if (e && e.message === 'cancelled') throw e;
+        riffError = 'run';
+      }
+    }
+
     // 6) [ตัวเลือก] lyrics: Whisper ใน worker (เสียง 16kHz แยกเสียงร้องแล้ว)
-    let lyrChunks = null, lyricsError = null, vocalIsolated = false;
+    let lyrChunks = null, lyricsError = null, vocalIsolated = false, lyrDevice = null;
     if (withLyrics) {
       try {
         P('lyrics', 0.02, I18N.t('job.lyr.prep'));
@@ -267,9 +307,11 @@
           ctl,
           // โหลดโมเดล = 4–35% ของช่วง lyrics, ถอดเสียง = 35–100%
           onDl: (pct) => P('lyrics', 0.04 + (pct / 100) * 0.31, I18N.t('job.lyr.dl') + ' ' + pct + '%'),
+          onDevice: (d) => { lyrDevice = d; P('lyrics', 0.35, I18N.t(d === 'webgpu' ? 'job.lyr.gpu' : d === 'wasm-fallback' ? 'job.lyr.gpuFail' : 'job.lyr.cpu')); },
           onAsr: (pct, elapsed) => {
-            if (pct != null) P('lyrics', 0.35 + (pct / 100) * 0.65, I18N.t('job.lyr.asr') + ' ' + pct + '%');
-            else P('lyrics', 0.5, I18N.t('job.lyr.asr') + ' ' + fmtTime(elapsed || 0));
+            const dv = lyrDevice === 'webgpu' ? ' · GPU' : lyrDevice ? ' · CPU' : '';
+            if (pct != null) P('lyrics', 0.35 + (pct / 100) * 0.65, I18N.t('job.lyr.asr') + ' ' + pct + '%' + dv);
+            else P('lyrics', 0.5, I18N.t('job.lyr.asr') + ' ' + fmtTime(elapsed || 0) + dv);
           },
         });
         lyrChunks = res.chunks;
@@ -323,6 +365,8 @@
     };
     if (lyricsError) doc.lyricsError = lyricsError;
     if (lyricsEmpty) doc.lyricsEmpty = true;
+    if (riff) doc._riff = riff;
+    if (riffError) doc._riffError = riffError;
     return doc;
   }
 

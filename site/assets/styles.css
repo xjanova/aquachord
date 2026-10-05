@@ -408,9 +408,10 @@ select option { background: #0a1826; color: #fff; }
 .orb-canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: pan-y; cursor: grab; }
 .orb-canvas:active { cursor: grabbing; }
 .orb-fallback { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; }
-.orb-fallback::before { content: ''; width: min(48%, 260px); aspect-ratio: 1; border-radius: 50%; background: radial-gradient(circle at 34% 30%, #bafcf0 0%, #2dd4bf 18%, #0b6e78 48%, #102a52 78%, #2a1f6b 100%); box-shadow: 0 0 40px rgba(61, 245, 208, 0.45), inset -14px -18px 40px rgba(0, 0, 0, 0.45); }
-.orb-fallback i { position: absolute; width: min(92%, 500px); aspect-ratio: 4 / 1; border-radius: 50%; border: 2px solid rgba(94, 234, 212, 0.45); transform: rotate(-19deg); box-shadow: 0 0 18px rgba(139, 92, 246, 0.35); }
-html[data-motion="on"] .orb-fallback::before { animation: bob 6s var(--ease) infinite; }
+.orb-fallback::before { content: ''; width: min(36%, 150px); aspect-ratio: 100 / 220; transform: rotate(-20deg); background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 220'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23bafcf0'/%3E%3Cstop offset='.45' stop-color='%232dd4bf'/%3E%3Cstop offset='1' stop-color='%234c3bb0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='44' y='6' width='12' height='118' rx='3' fill='%23245a6e'/%3E%3Crect x='38' y='0' width='24' height='28' rx='6' fill='%23245a6e'/%3E%3Cpath d='M50 98c-15 0-28 8-28 25 0 9 6 14 6 20s-13 13-13 33c0 22 17 38 35 38s35-16 35-38c0-20-13-27-13-33s6-11 6-20c0-17-13-25-28-25z' fill='url(%23g)'/%3E%3Ccircle cx='50' cy='148' r='11' fill='%2304121c'/%3E%3Crect x='38' y='186' width='24' height='4' rx='2' fill='%23d9fbf4'/%3E%3Cpath d='M46.5 28v160M50 28v160M53.5 28v160' stroke='%23d9fbf4' stroke-width='.7' opacity='.85'/%3E%3C/svg%3E") center / contain no-repeat; filter: drop-shadow(0 0 22px rgba(61, 245, 208, 0.45)); }
+.orb-fallback i { display: none; }
+html[data-motion="on"] .orb-fallback::before { animation: gbob 6s var(--ease) infinite; }
+@keyframes gbob { 0%, 100% { transform: rotate(-20deg); } 50% { transform: rotate(-16deg) translateY(-6px); } }
 .world-coordinates { position: absolute; right: 4px; top: 8%; display: none; flex-direction: column; align-items: flex-end; gap: 6px; font-family: var(--font-d); font-size: 10.5px; letter-spacing: 0.24em; color: #c4dde0; pointer-events: none; }
 .world-coordinates i { width: 90px; height: 1px; background: linear-gradient(90deg, transparent, var(--acc)); }
 
@@ -519,8 +520,8 @@ html[data-motion="on"] .stage-row.active .stage-dot .ic { animation: spin 1.6s l
 .empty.slim { padding: 30px 20px; grid-column: 1 / -1; }
 .empty h3 { font-family: var(--font-d); font-weight: 600; font-size: 22px; }
 .empty p { color: var(--muted); max-width: 46ch; }
-.empty-orb { width: 110px; height: 110px; border-radius: 50%; margin-bottom: 10px; background: radial-gradient(circle at 34% 30%, #bafcf0 0%, #2dd4bf 16%, #0b6e78 46%, #102a52 76%, #2a1f6b 100%); box-shadow: 0 0 40px rgba(61, 245, 208, 0.35), inset -10px -14px 30px rgba(0, 0, 0, 0.45); }
-html[data-motion="on"] .empty-orb { animation: bob 5s var(--ease) infinite; }
+.empty-orb { width: 70px; height: 140px; margin-bottom: 10px; transform: rotate(-18deg); background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 220'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%23bafcf0'/%3E%3Cstop offset='.45' stop-color='%232dd4bf'/%3E%3Cstop offset='1' stop-color='%234c3bb0'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='44' y='6' width='12' height='118' rx='3' fill='%23245a6e'/%3E%3Crect x='38' y='0' width='24' height='28' rx='6' fill='%23245a6e'/%3E%3Cpath d='M50 98c-15 0-28 8-28 25 0 9 6 14 6 20s-13 13-13 33c0 22 17 38 35 38s35-16 35-38c0-20-13-27-13-33s6-11 6-20c0-17-13-25-28-25z' fill='url(%23g)'/%3E%3Ccircle cx='50' cy='148' r='11' fill='%2304121c'/%3E%3Crect x='38' y='186' width='24' height='4' rx='2' fill='%23d9fbf4'/%3E%3Cpath d='M46.5 28v160M50 28v160M53.5 28v160' stroke='%23d9fbf4' stroke-width='.7' opacity='.85'/%3E%3C/svg%3E") center / contain no-repeat; filter: drop-shadow(0 0 24px rgba(61, 245, 208, 0.4)); }
+html[data-motion="on"] .empty-orb { animation: gbob 5s var(--ease) infinite; }
 
 /* ================================================================ หน้าเพลง */
 .back-link { display: inline-flex; align-items: center; gap: 6px; margin: 22px 0 14px; min-height: 40px; padding: 0 12px 0 6px; border-radius: 10px; color: var(--muted); font-family: var(--font-d); font-size: 13.5px; max-width: 100%; }
@@ -682,6 +683,85 @@ html[data-motion="on"] .empty-orb { animation: bob 5s var(--ease) infinite; }
 .switch-lang button { min-width: 56px; min-height: 36px; padding: 0 12px; border-radius: 9px; font-family: var(--font-d); font-weight: 600; font-size: 13px; color: var(--muted); }
 .switch-lang button.active { background: var(--acc); color: var(--acc-ink); }
 
+/* ================================================================ เล่นตาม (จังหวะการตี) */
+.inst-seg { flex: none; }
+.inst-seg .ingest-tab { padding: 0 12px; flex: none; white-space: nowrap; }
+.lab-pick .inst-seg { margin-bottom: 6px; }
+.play-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
+.play-row .button { margin-bottom: 3px; }
+.play-style { flex: 1 1 200px; max-width: 280px; }
+.bpm-group { height: 42px; }
+.solo-row { min-height: 42px; }
+.solo-row .switch-text .ic { color: var(--warn); }
+.pattern {
+  display: grid; grid-template-columns: repeat(var(--n, 8), minmax(0, 1fr)); gap: 4px;
+  margin: 16px 0 6px; padding: 10px; border-radius: 14px;
+  border: 1px solid var(--line); background: rgba(0, 0, 0, 0.18);
+}
+.pattern.single { display: block; }
+.pat-note { color: var(--muted); font-size: 13px; }
+.pat-step { display: grid; justify-items: center; gap: 2px; padding: 8px 0 6px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid transparent; transition: background 0.08s, border-color 0.08s, transform 0.08s; }
+.pat-step b { font-family: var(--font-m); font-size: clamp(15px, 2.4vw, 22px); line-height: 1; color: var(--acc); }
+.pat-step.pick b { color: var(--violet-2); font-size: clamp(13px, 2vw, 18px); }
+.pat-step.rest b { color: var(--dim); }
+.pat-step small { font-family: var(--font-m); font-size: 10.5px; color: var(--dim); }
+.pat-step.now { background: rgba(61, 245, 208, 0.2); border-color: var(--acc); transform: translateY(-2px); }
+.pat-step.now b { color: #fff; }
+.riff-row { padding: 10px 14px; border-radius: 14px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.025); }
+.riff-row .switch-text .ic { color: var(--acc); }
+
+/* ตรวจ GPU */
+.gpu-line { flex-basis: 100%; display: grid; gap: 2px; padding: 9px 12px; border-radius: 11px; font-size: 12.5px; line-height: 1.5; color: var(--muted); border: 1px solid var(--line); background: rgba(255, 255, 255, 0.025); }
+.gpu-line .ic { width: 14px; height: 14px; vertical-align: -2px; }
+.gpu-line b { color: #fff; font-weight: 600; font-size: 13px; }
+.gpu-line.ok { border-color: rgba(61, 245, 208, 0.4); background: rgba(61, 245, 208, 0.06); }
+.gpu-line.ok b { color: var(--acc); }
+.gpu-line.warn { border-color: rgba(251, 191, 36, 0.35); background: rgba(251, 191, 36, 0.05); }
+.gpu-line.warn b { color: #fde68a; }
+.gpu-line .chip-btn { justify-self: start; margin-top: 6px; min-height: 34px; }
+.setting-row.stack > div:first-child { flex: 1 1 100%; }
+
+/* ================================================================ แท็บโซโล่/ริฟฟ์ */
+.tab-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tab-actions .button { margin-bottom: 2px; }
+.tab-speed { min-width: 84px; flex: none; }
+.tab-speed select { min-height: 40px; }
+.tab-meta { font-family: var(--font-m); font-size: 12px; color: var(--dim); margin: -4px 0 12px; }
+.tab-wrap { display: flex; flex-wrap: wrap; gap: 14px 0; padding: 4px 0 6px; --rowh: 22px; }
+.tab-bar {
+  position: relative; flex: 1 1 280px; min-width: 260px; max-width: 100%;
+  height: calc(var(--rowh) * 6 + 22px); padding-top: 22px;
+  border-right: 2px solid rgba(120, 230, 220, 0.35);
+}
+.tab-bar::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 22px; height: calc(var(--rowh) * 6);
+  background: repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--rowh) / 2 - 0.5px), rgba(190, 240, 236, 0.32) calc(var(--rowh) / 2 - 0.5px), rgba(190, 240, 236, 0.32) calc(var(--rowh) / 2 + 0.5px), transparent calc(var(--rowh) / 2 + 0.5px), transparent var(--rowh));
+}
+.tab-num { position: absolute; left: 4px; top: 0; font-family: var(--font-d); font-size: 11px; color: var(--muted); letter-spacing: 0.06em; }
+.tab-num i { font-style: normal; color: var(--dim); margin-left: 4px; font-family: var(--font-m); font-size: 10px; }
+.tab-strs { position: absolute; left: 2px; top: 22px; display: grid; grid-template-rows: repeat(6, var(--rowh)); align-items: center; pointer-events: none; }
+.tab-strs i { font-style: normal; font-family: var(--font-m); font-size: 10px; color: var(--dim); line-height: 1; }
+.tab-note {
+  position: absolute; top: calc(22px + var(--row) * var(--rowh)); transform: translateX(-50%);
+  min-width: 20px; height: var(--rowh); padding: 0 3px; border-radius: 6px;
+  font-family: var(--font-m); font-weight: 700; font-size: 13px; line-height: var(--rowh); text-align: center;
+  color: #e9fffb; background: #0a1826; border: 1px solid transparent;
+  transition: background 0.1s, color 0.1s, transform 0.1s;
+}
+.tab-note:hover { border-color: rgba(61, 245, 208, 0.5); }
+.tab-note.now { background: var(--acc); color: var(--acc-ink); transform: translateX(-50%) scale(1.15); box-shadow: 0 0 14px rgba(61, 245, 208, 0.6); }
+.tab-gap { flex: 0 0 100%; text-align: center; font-family: var(--font-d); font-size: 11px; letter-spacing: 0.14em; color: var(--dim); }
+
+/* ไดอะแกรมคีย์เปียโน (music.js pianoSVG) */
+.pk-w { fill: #dfeef0; }
+.pk-w.pk-on { fill: var(--acc); }
+.pk-b { fill: #0b1622; }
+.pk-b.pk-on { fill: var(--acc); }
+.pk-dot { fill: var(--acc-ink); }
+.pk-dot.pk-root { fill: #7c3aed; }
+.chord-pop .pk { margin: 8px auto 2px; }
+.lab-diagram .pk { width: min(260px, 72vw); height: auto; margin: 8px 0; }
+
 /* ================================================================ modal + toast */
 .modal-overlay { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 20px; background: rgba(2, 6, 12, 0.66); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: fade 0.2s ease; }
 @keyframes fade { from { opacity: 0; } }
@@ -707,12 +787,15 @@ html[data-motion="on"] .empty-orb { animation: bob 5s var(--ease) infinite; }
 .guide { position: fixed; inset: 0; z-index: 40; pointer-events: none; }
 .guide-body { position: absolute; left: 0; top: 0; width: var(--nw, 250px); height: var(--nh, 330px); transform: translate3d(var(--nx, -999px), var(--ny, 0px), 0) scale(var(--ns, 1)); transform-origin: 0 0; transition: opacity 0.3s; }
 .guide.flying .guide-body, .guide.flying .guide-bubble, .guide.flying .guide-ctl { transition: transform 0.72s cubic-bezier(0.3, 0.7, 0.2, 1), opacity 0.3s; }
-.guide-figure { position: absolute; inset: 0; filter: drop-shadow(0 20px 30px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 26px rgba(61, 245, 208, 0.18)); }
+/* ห้ามใส่ drop-shadow ที่ตัวมาสคอต — หยดน้ำ/สายน้ำรอบตัวทุกชิ้นจะได้เงาดำ กลายเป็นพื้นดำรอบตัว (เคยแก้ใน de843eb) */
+.guide-figure { position: absolute; inset: 0; }
 html[data-motion="on"] .guide-figure { animation: guideFloat 5.5s ease-in-out infinite; }
 @keyframes guideFloat { 50% { transform: translate3d(0, -1.4%, 0); } }
 .g-still, .g-clip { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: contain; opacity: 0; transition: opacity 0.22s; user-select: none; -webkit-user-select: none; pointer-events: none; }
 .g-clip.pad { inset: -8%; width: 116%; height: 116%; }
 .g-still.on, .g-clip.on { opacity: 1; }
+/* คลิปเล่นอยู่ → ซ่อนภาพนิ่งข้างใต้ ไม่งั้นตอนขยับจะเห็นแขน/ผมของภาพนิ่งค้างเป็นเงาซ้อน */
+.guide-figure.clip-on .g-still { opacity: 0; transition-delay: 0.26s; }
 .g-still.react { animation: guideHop 0.55s var(--ease); transform-origin: 50% 100%; }
 @keyframes guideHop { 35% { transform: translateY(-3.5%) rotate(-2deg) scale(1.02); } 70% { transform: translateY(0.6%) rotate(0.6deg); } }
 .guide-hit { position: absolute; left: 24%; width: 52%; top: 4%; height: 88%; border: 0; background: transparent; border-radius: 40%; pointer-events: auto; cursor: pointer; }
@@ -842,7 +925,7 @@ html[data-motion="on"] .guide[data-mode="mini"] .guide-face { animation: bob 4s 
 }
 /* ≥1280: อควายืนบนพาเนล → ลูกแก้วขยับหลบไปทางซ้ายของเธอ */
 @media (min-width: 1280px) {
-  html.guide-staged .studio-stage, html.guide-staged .job-stage { margin-right: 36%; }
+  html.guide-staged .studio-stage, html.guide-staged .job-stage { margin-right: 46%; }
   html.guide-staged .studio .world-coordinates { display: none; }
   html.guide-staged .studio .spot-status { visibility: hidden; }
 }

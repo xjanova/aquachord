@@ -48,15 +48,42 @@ function mkProgress(id) {
   };
 }
 
-async function getPipe(repo, id) {
-  if (pipes.has(repo)) return pipes.get(repo);
+// โมเดลที่ต้องใช้ GPU: ถ้า WebGPU ใช้ไม่ได้ → ถอยไป whisper-small บน CPU (ไม่ปล่อยให้ค้างนานบน CPU)
+const CPU_FALLBACK = 'Xenova/whisper-small';
+
+async function gpuF16() {
+  try {
+    const a = navigator.gpu && await navigator.gpu.requestAdapter({ powerPreference: 'high-performance' });
+    return !!(a && a.features && a.features.has('shader-f16'));
+  } catch (e) { return false; }
+}
+
+async function getPipe(repo, id, gpuOnly) {
+  const key = repo + (gpuOnly ? '#gpu' : '');
+  if (pipes.has(key)) { const p = pipes.get(key); post({ type: 'device', id, device: p._aqDevice, model: p._aqRepo }); return p; }
   const lib = await loadLib();
   const ver = (lib.env && lib.env.version) || '3';
   const major = parseInt(String(ver).split('.')[0], 10) || 3;
   const progress_callback = mkProgress(id);
-  let pipe = null;
+  let pipe = null, device = 'wasm', usedRepo = repo;
   try {
-    if (major >= 3) {
+    if (major >= 3 && gpuOnly) {
+      if (typeof navigator !== 'undefined' && navigator.gpu) {
+        const f16 = await gpuF16();
+        const dt = f16 ? 'q4f16' : 'q4';
+        try {
+          pipe = await lib.pipeline('automatic-speech-recognition', repo, {
+            device: 'webgpu', dtype: { encoder_model: dt, decoder_model_merged: dt }, progress_callback,
+          });
+          device = 'webgpu';
+        } catch (e) { pipe = null; }
+      }
+      if (!pipe) {
+        usedRepo = CPU_FALLBACK;
+        pipe = await lib.pipeline('automatic-speech-recognition', CPU_FALLBACK, { dtype: 'q8', progress_callback });
+        device = 'wasm-fallback';
+      }
+    } else if (major >= 3) {
       // WebGPU: encoder fp32 (ชัวร์สุดเรื่อง op support) + decoder q8 (เล็ก/ไฟล์เดียวกับ WASM)
       if (typeof navigator !== 'undefined' && navigator.gpu) {
         try {
@@ -65,6 +92,7 @@ async function getPipe(repo, id) {
             dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' },
             progress_callback,
           });
+          device = 'webgpu';
         } catch (e) { pipe = null; /* webgpu ใช้ไม่ได้ → wasm */ }
       }
       if (!pipe) {
@@ -82,16 +110,18 @@ async function getPipe(repo, id) {
     err.code = 'load';
     throw err;
   }
-  pipes.set(repo, pipe);
+  pipe._aqDevice = device; pipe._aqRepo = usedRepo;
+  pipes.set(key, pipe);
+  post({ type: 'device', id, device, model: usedRepo });
   return pipe;
 }
 
 self.onmessage = async (ev) => {
   const msg = ev.data || {};
   if (msg.cmd !== 'run') return;
-  const { id, pcm, lang, repo, duration } = msg;
+  const { id, pcm, lang, repo, duration, gpuOnly } = msg;
   try {
-    const pipe = await getPipe(repo, id);
+    const pipe = await getPipe(repo, id, gpuOnly);
     post({ type: 'dl', id, pct: 100 });
 
     let processedSec = 0;

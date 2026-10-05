@@ -48,6 +48,9 @@
     spark: '<path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/>',
     info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5M12 7.6v.1"/>',
     file: '<path d="M6.5 3.5h7l4 4v13h-11z"/><path d="M13.5 3.5v4h4"/>',
+    guitar: '<path d="M20.5 3.5l-6.2 6.2M18.4 2.6l3 3"/><path d="M14.3 9.7a3.4 3.4 0 0 0-4.6-.3 2.6 2.6 0 0 1-2.1.7 3.7 3.7 0 0 0-3.1 1.2c-1.9 1.9-1.6 5.2.6 7.4s5.5 2.5 7.4.6a3.7 3.7 0 0 0 1.2-3.1 2.6 2.6 0 0 1 .7-2.1 3.4 3.4 0 0 0-.1-4.4z"/><circle cx="10" cy="14" r="1.3"/>',
+    piano: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 12.5V19M12 12.5V19M16 12.5V19"/><path d="M6.6 5h2.8v7.5H6.6zM10.6 5h2.8v7.5h-2.8zM14.6 5h2.8v7.5h-2.8z" fill="currentColor" stroke="none"/>',
+    copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/>',
   };
   const ic = (n, cls) => `<svg class="ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 
@@ -157,7 +160,7 @@
     try { return Object.assign({ steps: 0, capo: 0 }, JSON.parse(ls.get('aq.view.' + id, '{}'))); }
     catch (e) { return { steps: 0, capo: 0 }; }
   }
-  function saveViewPrefs(id, p) { ls.set('aq.view.' + id, JSON.stringify({ steps: p.steps, capo: p.capo })); }
+  function saveViewPrefs(id, p) { ls.set('aq.view.' + id, JSON.stringify({ steps: p.steps, capo: p.capo, bpm: p.bpm || undefined })); }
   function storeSave(doc) {
     try { Store.upsert(doc); return true; }
     catch (e) { toast(t('err.storage'), { kind: 'warn', ms: 6000 }); return false; }
@@ -171,11 +174,11 @@
     confirmDialog({ title: t('library.delete'), body: tf('library.deleteDesc', { title: song.title }), ok: t('common.delete'), danger: true })
       .then((ok) => {
         if (!ok) return;
-        const prefs = ls.get('aq.view.' + id, null);
-        Store.remove(id); ls.del('aq.view.' + id);
+        const prefs = ls.get('aq.view.' + id, null), riffSaved = ls.get('aq.riff.' + id, null);
+        Store.remove(id); ls.del('aq.view.' + id); ls.del('aq.riff.' + id);
         refreshShell();
         toast(t('library.deleted'), { action: { label: t('common.undo'), run: () => {
-          storeSave(song); if (prefs) ls.set('aq.view.' + id, prefs);
+          storeSave(song); if (prefs) ls.set('aq.view.' + id, prefs); if (riffSaved) ls.set('aq.riff.' + id, riffSaved);
           refreshShell(); route();
         } } });
         if (after) after();
@@ -246,6 +249,18 @@
     set lang(v) { ls.set('aq.lyr.lang', v); },
   };
   const lyricsAvailable = () => !!(window.Lyrics && typeof Worker !== 'undefined');
+  const riffAvailable = () => !!(window.Riff && Riff.extract);
+  const riffPref = {
+    get on() { return ls.get('aq.riff.on', '1') === '1'; },
+    set on(v) { ls.set('aq.riff.on', v ? '1' : '0'); },
+  };
+  function riffBoxHTML() {
+    if (!riffAvailable()) return '';
+    return `<label class="switch-row riff-row" id="riffBox">
+      <span class="switch"><input type="checkbox" id="riffOn" ${riffPref.on ? 'checked' : ''} /><i></i></span>
+      <span class="switch-text">${ic('guitar')} ${t('tab.enable')}</span><span class="chip chip-beta">Beta</span>
+    </label>`;
+  }
   const opt = (v, label, cur) => `<option value="${v}" ${v === cur ? 'selected' : ''}>${esc(label)}</option>`;
   function lyrSelectsHTML() {
     return `
@@ -255,8 +270,37 @@
         </select></label>
       <label class="mini-field"><span>${t('lyrics.model')}</span>
         <select id="lyrModel">
-          ${opt('tiny', t('lyrics.model.tiny'), lyrPref.model)}${opt('base', t('lyrics.model.base'), lyrPref.model)}${opt('small', t('lyrics.model.small'), lyrPref.model)}
-        </select></label>`;
+          ${opt('tiny', t('lyrics.model.tiny'), lyrPref.model)}${opt('base', t('lyrics.model.base'), lyrPref.model)}${opt('small', t('lyrics.model.small'), lyrPref.model)}${Lyrics.MODELS.turbo ? opt('turbo', t('lyrics.model.turbo'), lyrPref.model) : ''}
+        </select></label>
+      <div class="gpu-line" data-gpu-line>${ic('spark')} ${t('gpu.checking')}</div>`;
+  }
+  // ตรวจ GPU ของเครื่องนี้ แล้วบอกผู้ใช้ + เปิด/ปิดโมเดลใหญ่พิเศษ (ต้องมี GPU)
+  function paintGpu(root) {
+    if (!window.Lyrics || !Lyrics.detectGPU) return;
+    Lyrics.detectGPU().then((g) => {
+      $$('[data-gpu-line]', root).forEach((el) => {
+        if (!el.isConnected) return;
+        if (g.webgpu) {
+          el.className = 'gpu-line ok';
+          el.innerHTML = `<b>⚡ ${esc(tf('gpu.yes', { name: g.name || 'WebGPU' }))}</b><span>${t('gpu.yesDesc')}</span>`
+            + (lyrPref.model !== 'turbo' && Lyrics.MODELS.turbo ? `<button type="button" class="chip-btn sec" data-use-turbo>${t('gpu.useTurbo')}</button>` : '');
+        } else {
+          el.className = 'gpu-line warn';
+          el.innerHTML = `<b>${esc(g.name ? tf('gpu.noWith', { name: g.name }) : t('gpu.no'))}</b><span>${t('gpu.noDesc')}</span>`;
+        }
+      });
+      $$('#lyrModel option[value="turbo"]', root).forEach((o) => {
+        o.disabled = !g.webgpu;
+        o.textContent = t('lyrics.model.turbo') + (g.webgpu ? '' : ' — ' + t('gpu.needsGpu'));
+      });
+      if (!g.webgpu && lyrPref.model === 'turbo') { lyrPref.model = 'base'; const s = $('#lyrModel', root); if (s) s.value = 'base'; }
+      $$('[data-use-turbo]', root).forEach((b) => b.addEventListener('click', () => {
+        lyrPref.model = 'turbo';
+        $$('#lyrModel', root).forEach((s) => { s.value = 'turbo'; });
+        b.remove();
+        toast(t('gpu.turboOn'), { kind: 'ok' });
+      }));
+    });
   }
   function lyricsBoxHTML() {
     if (!lyricsAvailable()) return '';
@@ -368,6 +412,7 @@
               <p class="field-hint">${t('ingest.urlHint')}</p>
             </div>
             ${lyricsBoxHTML()}
+            ${riffBoxHTML()}
             <div class="spot-actions">
               <button class="button primary" type="button" id="startBtn">${ic('play')}${t('ingest.start')}</button>
               <a class="button secondary" href="#/edit/new">${ic('edit')}${t('home.writeOwn')}</a>
@@ -436,6 +481,7 @@
       </section>`;
 
     wireIngest();
+    paintGpu(view);
     wireSongCards($('#homeGrid'), { onDel: () => { const y = window.scrollY; renderHome(); window.scrollTo(0, y); } });
     FX.Orb.mount($('#orbStage'));
   }
@@ -483,6 +529,8 @@
       wireLyricsSelects(view);
     }
     $('#urlInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#startBtn').click(); });
+    const riffOn = $('#riffOn');
+    if (riffOn) riffOn.addEventListener('change', () => { riffPref.on = riffOn.checked; });
 
     $('#startBtn').addEventListener('click', () => {
       // เปิด AudioContext ใน gesture แรก (iOS)
@@ -502,6 +550,7 @@
         input = { kind: 'file', file: pickedFile };
       }
       if (lyricsAvailable() && lyrPref.on) input.lyrics = { model: lyrPref.model, lang: lyrPref.lang };
+      if (riffAvailable() && riffPref.on) input.riff = true;
       ensureCopyrightAccepted(() => Job.start(input));
     });
   }
@@ -515,7 +564,7 @@
       if (this.st && this.st.running) { location.hash = '#/job'; return; }
       const ctl = { aborted: false };
       const st = this.st = {
-        running: true, input, ctl, stages: Analyze.stages(!!input.lyrics), stage: 'ingest', percent: 0, detail: '',
+        running: true, input, ctl, stages: Analyze.stages(!!input.lyrics, !!input.riff), stage: 'ingest', percent: 0, detail: '',
         name: input.kind === 'file' ? input.file.name : input.url, doc: null,
       };
       FX.Orb.setBusy(true);
@@ -524,7 +573,31 @@
           if (st !== this.st || ctl.aborted) return;
           st.running = false; st.stage = 'done'; st.percent = 100;
           FX.Orb.setBusy(false);
+          // แท็บโซโล่/ริฟฟ์เก็บแยกจาก SongDoc (สัญญากลางห้ามเปลี่ยนโดยไม่บัมป์ schemaVersion)
+          const riff = doc._riff, riffErr = doc._riffError;
+          delete doc._riff; delete doc._riffError;
+          const saveRiff = (id) => {
+            if (!riff || !Array.isArray(riff.notes) || !riff.notes.length) return false;
+            try { localStorage.setItem('aq.riff.' + id, JSON.stringify(riff)); return true; } catch (e) { toast(t('err.storage'), { kind: 'warn' }); return false; }
+          };
+          if (input.riffFor) {
+            // แกะแท็บให้เพลงที่มีอยู่แล้ว — ไม่สร้างเพลงใหม่
+            this.st = null; pickedFile = null;
+            const ok = saveRiff(input.riffFor);
+            const msg = ok ? t('tab.done') : (riffErr ? t('tab.err') : t('tab.noneFound'));
+            const target = '#/song/' + input.riffFor;
+            this.paint();
+            if (curRoute === 'job' || location.hash === target) {
+              toast(msg, { kind: ok ? 'ok' : 'warn' });
+              if (location.hash === target) route(); else location.hash = target;
+            } else {
+              // ผู้ใช้ไปเปิดหน้าอื่นระหว่างรอ — ไม่ดึงกลับ แจ้งพร้อมปุ่มเปิดดู
+              toast(msg, { kind: ok ? 'ok' : 'warn', action: { label: t('job.open'), run: () => { location.hash = target; } } });
+            }
+            return;
+          }
           if (!storeSave(doc)) { this.st = null; this.paint(); if (curRoute === 'job') location.hash = '#/'; return; }
+          saveRiff(doc.id);
           pickedFile = null;
           st.doc = doc;
           const msg = doc.lyricsError ? (t('lyrics.err.' + doc.lyricsError) || t('lyrics.err.run'))
@@ -782,55 +855,87 @@
 
   function stopAutoScroll() { scrollOn = false; cancelAnimationFrame(scrollRAF); if (!Player.on) keepAwake(false); }
 
-  /* ฟังลำดับคอร์ดตามจังหวะจริง (timeline จากการแกะ) หรือห้องละ 4 จังหวะตาม BPM */
+  /* ---------------- เล่นตาม: เครื่องดนตรี + สไตล์การตี + ลูกเล่นโซโล่ ---------------- */
+  const PLAY = {
+    get style() { const v = ls.get('aq.play.style', 'pop'); return Music.PATTERNS.some((p) => p.id === v) ? v : 'pop'; },
+    set style(v) { ls.set('aq.play.style', v); },
+    get solo() { return ls.get('aq.play.solo', '0') === '1'; },
+    set solo(v) { ls.set('aq.play.solo', v ? '1' : '0'); },
+  };
+  function setInstrument(i) { Music.setInstrument(i); ls.set('aq.instrument', Music.getInstrument()); }
+  Music.setInstrument(ls.get('aq.instrument', 'guitar'));
+  const patName = (p) => (I18N.get() === 'en' ? p.en : p.th);
+  function styleOptionsHTML(cur) { return Music.PATTERNS.map((p) => opt(p.id, patName(p), cur)).join(''); }
+  function instSegHTML() {
+    const g = Music.getInstrument() === 'guitar';
+    return `<div class="segctl compact inst-seg" role="radiogroup" aria-label="${esc(t('inst.label'))}">
+      <button type="button" class="ingest-tab ${g ? 'active' : ''}" role="radio" aria-checked="${g}" data-inst="guitar">${ic('guitar')}${t('inst.guitar')}</button>
+      <button type="button" class="ingest-tab ${!g ? 'active' : ''}" role="radio" aria-checked="${!g}" data-inst="piano">${ic('piano')}${t('inst.piano')}</button>
+    </div>`;
+  }
+  // แถบจังหวะ: ลูกศรตี/ตัวนิ้ว + เลขนับ (ไฮไลต์ช่องที่กำลังเล่น)
+  function patternHTML(id) {
+    const p = Music.PATTERNS.find((x) => x.id === id) || Music.PATTERNS[1];
+    if (!p.grid) return `<div class="pattern single"><span class="pat-note">${t('play.singleHint')}</span></div>`;
+    const counts = Music.rhythm.countLabels(p);
+    return `<div class="pattern" style="--n:${p.grid}">${p.steps.split('').map((s, k) => `
+      <span class="pat-step${s === '.' ? ' rest' : ''}${/[DdUXC]/.test(s) ? ' strum' : ' pick'}" data-k="${k}"><b>${esc(Music.GLYPH[s] || s)}</b><small>${counts[k] || ''}</small></span>`).join('')}</div>`;
+  }
+  function paintSteps(k) {
+    $$('.pat-step', view).forEach((el) => el.classList.toggle('now', +el.dataset.k === k));
+  }
+
+  // ลำดับคอร์ดตามเวลา: timeline จากการแกะ (ย่อช่องว่างยาวเหลือไม่เกิน 2 ห้อง) หรือห้องละ 1 คอร์ดจาก ChordPro
+  function chordSeq(song, bpm) {
+    const bar = (60 / bpm) * 4;
+    let seq = [];
+    if (Array.isArray(song.timeline) && song.timeline.length > 1) {
+      song.timeline.forEach((e) => { if (e.chord && Music.isChord(e.chord) && (!seq.length || seq[seq.length - 1].chord !== e.chord)) seq.push({ t: +e.t || 0, chord: e.chord }); });
+      let shift = 0;
+      seq = seq.map((e, k) => { if (k) { const gap = e.t - seq[k - 1].t; if (gap > bar * 2) shift += gap - bar * 2; } return { t: e.t - shift, chord: e.chord }; });
+      const t0 = seq.length ? seq[0].t : 0;
+      seq.forEach((e) => { e.t -= t0; });
+      // จังหวะที่ผู้ใช้ปรับ ≠ จังหวะเพลงเดิม → ยืด/หดเวลาตามสัดส่วน
+      const orig = parseFloat(song.tempo);
+      if (orig > 0 && Math.abs(orig - bpm) > 0.5) seq.forEach((e) => { e.t *= orig / bpm; });
+    } else {
+      const chords = [];
+      ChordPro.parse(song.chordpro || '').lines.forEach((ln) => { if (ln.type === 'line') ln.segs.forEach((s) => { if (s.chord && Music.isChord(s.chord)) chords.push(s.chord); }); });
+      seq = chords.map((c, k) => ({ t: k * bar, chord: c }));
+    }
+    const end = seq.length ? seq[seq.length - 1].t + bar : 0;
+    return { seq, end };
+  }
+
   const Player = {
-    on: false, timer: 0, seq: [], i: 0,
-    start(song, mapChord) {
+    on: false, seq: [], i: 0, cur: null,
+    start(song, mapChord, o) {
       this.stop();
-      let seq = [];
-      if (Array.isArray(song.timeline) && song.timeline.length > 1) {
-        song.timeline.forEach((e) => { if (e.chord && Music.isChord(e.chord) && (!seq.length || seq[seq.length - 1].chord !== e.chord)) seq.push({ t: +e.t || 0, chord: e.chord }); });
-        // ช่องว่างยาว (อินโทร/ท่อนไม่มีคอร์ด) ย่อเหลือไม่เกิน 4 วินาที
-        let shift = 0;
-        seq = seq.map((e, k) => { if (k) { const gap = e.t - seq[k - 1].t; if (gap > 4) shift += gap - 4; } return { t: e.t - shift, chord: e.chord }; });
-        const t0 = seq.length ? seq[0].t : 0;
-        seq.forEach((e) => { e.t -= t0; });
-      } else {
-        const bar = (60 / (parseFloat(song.tempo) || 90)) * 4;
-        const chords = [];
-        ChordPro.parse(song.chordpro || '').lines.forEach((ln) => { if (ln.type === 'line') ln.segs.forEach((s) => { if (s.chord && Music.isChord(s.chord)) chords.push(s.chord); }); });
-        seq = chords.map((c, k) => ({ t: k * bar, chord: c }));
-      }
+      const { seq, end } = chordSeq(song, o.bpm);
       if (!seq.length) { toast(t('song.noChordsToPlay'), { kind: 'warn' }); return false; }
-      this.seq = seq; this.i = 0; this.on = true; this.map = mapChord;
-      this.t0 = performance.now();
+      const mapped = seq.map((e) => { const m = mapChord(e.chord); return { t: e.t, chord: m.sound, label: m.shape }; });
+      this.seq = mapped; this.i = 0; this.on = true; this.cur = mapped[0].label;
       keepAwake(true);
-      this.step();
+      const ok = Music.rhythm.play({
+        seq: mapped, end, bpm: o.bpm, pattern: o.style, solo: o.solo, key: o.key, seed: hashOf(song.id || 'x'),
+        onChord: (i) => { this.i = i + 1; this.cur = mapped[i].label; FX.Orb.pulse(); paintPlayer(); },
+        onStep: (k) => paintSteps(k),
+        onEnd: () => { this.on = false; this.cur = null; if (!scrollOn) keepAwake(false); paintPlayer(); paintSteps(-1); },
+      });
+      if (!ok) { this.on = false; return false; }
+      paintPlayer();
       return true;
     },
-    step() {
-      if (!this.on) return;
-      const e = this.seq[this.i];
-      if (!e) { this.stop(); paintPlayer(); return; }
-      const m = this.map(e.chord);
-      Music.strum(Music.voicingMidis ? Music.voicingMidis(m.sound) : Music.chordToMidis(m.sound), 28);
-      FX.Orb.pulse();
-      this.cur = m.shape;
-      paintPlayer();
-      this.i++;
-      const next = this.seq[this.i];
-      const wait = next ? Math.max(120, next.t * 1000 - (performance.now() - this.t0)) : 2200;
-      this.timer = setTimeout(() => this.step(), wait);
-    },
     stop() {
-      clearTimeout(this.timer); this.on = false; this.cur = null;
+      Music.rhythm.stop();
+      this.on = false; this.cur = null;
+      paintSteps(-1);
       if (!scrollOn) keepAwake(false);
     },
   };
   function paintPlayer() {
     const np = $('#nowPlaying');
-    const btn = $('[data-act="play"]', view);
-    if (btn) btn.innerHTML = Player.on ? `${ic('stop')}${t('song.stop')}` : `${ic('play')}${t('song.playSeq')}`;
+    $$('[data-act="play"]', view).forEach((btn) => { btn.innerHTML = Player.on ? `${ic('stop')}${t('song.stop')}` : `${ic('play')}${t('song.playSeq')}`; });
     $$('.strip-chord', view).forEach((el) => el.classList.toggle('now', Player.on && el.dataset.chord === Player.cur));
     if (!Player.on) { np.hidden = true; return; }
     np.hidden = false;
@@ -859,6 +964,8 @@
     let speedIdx = Math.min(SCROLL_SPEEDS.length - 1, Math.max(0, parseInt(ls.get('aq.scroll.speed', '1'), 10) || 0));
     const isAI = song.creator === 'AquaChord AI';
     const conf = song.confidence && song.confidence.chords ? Math.round(song.confidence.chords * 100) : null;
+    const songBpm = Math.round(parseFloat(song.tempo) || 90);
+    st.bpm = Math.max(40, Math.min(220, Math.round(+st.bpm || songBpm)));
 
     view.innerHTML = `
       <a class="back-link rise" href="#/library">${ic('back')}${t('nav.library')}</a>
@@ -896,6 +1003,25 @@
         <button type="button" class="dock-reset" data-act="reset" id="dvReset">${ic('reset')}<span>${t('song.original')}</span></button>
       </div>
 
+      <section class="panel play-panel rise" id="playPanel">
+        <div class="panel-head">
+          <div><div class="eyebrow small">PLAY-ALONG</div><h2 class="section-title">${t('play.title')}</h2></div>
+          ${instSegHTML()}
+        </div>
+        <div class="play-row">
+          <button class="button primary" type="button" data-act="play">${ic('play')}${t('song.playSeq')}</button>
+          <label class="mini-field play-style"><span>${t('play.style')}</span><select id="playStyle">${styleOptionsHTML(PLAY.style)}</select></label>
+          <div class="dock-group bpm-group"><span class="dock-label">BPM</span>
+            <button type="button" data-act="bpm-" aria-label="BPM −">−</button><span class="dock-val" id="dvBpm"></span><button type="button" data-act="bpm+" aria-label="BPM +">+</button></div>
+          <label class="switch-row solo-row">
+            <span class="switch"><input type="checkbox" id="playSolo" ${PLAY.solo ? 'checked' : ''} /><i></i></span>
+            <span class="switch-text">${ic('spark')} ${t('play.solo')}</span>
+          </label>
+        </div>
+        <div id="patView">${patternHTML(PLAY.style)}</div>
+        <p class="panel-note">${t('play.hint')}</p>
+      </section>
+
       <section class="panel strip-panel rise">
         <div class="panel-head"><div class="eyebrow small">${t('song.chordsIn')}</div><span class="panel-note">${t('song.tapHint')}</span></div>
         <div class="chord-strip" id="strip"></div>
@@ -904,7 +1030,8 @@
       <section class="panel sheet-panel rise">
         ${lyricsStatusHTML(song)}
         <div class="chordsheet" id="sheet"></div>
-      </section>`;
+      </section>
+      <section class="panel tab-panel rise" id="tabPanel"></section>`;
 
     const sheet = $('#sheet'), strip = $('#strip');
 
@@ -924,9 +1051,11 @@
     function playShape(shape) {
       const k = keys();
       const sound = st.capo ? Music.transposeChord(shape, st.capo, k.soundKey) : shape;
-      Music.strum(Music.voicingMidis(sound), 32);
+      Music.playChord(sound);
       FX.Orb.pulse();
     }
+    const playOpts = () => ({ bpm: st.bpm, style: PLAY.style, solo: PLAY.solo, key: keys().soundKey || song.key });
+    const restart = () => { if (Player.on) Player.start(song, mapChord, playOpts()); };
 
     function update() {
       const k = keys();
@@ -941,12 +1070,13 @@
       $('#dvScroll').classList.toggle('on', scrollOn);
       $('#dvScroll').setAttribute('aria-pressed', scrollOn ? 'true' : 'false');
       $('#dvReset').hidden = !st.steps && !st.capo;
+      $('#dvBpm').textContent = st.bpm;
       sheet.style.setProperty('--sheet-size', size + 'rem');
       sheet.innerHTML = ChordPro.render(song.chordpro, { steps: k.shapeSteps, keyHint: k.shapeKey });
       const chords = songChords(song.chordpro).map((c) => mapChord(c).shape);
       strip.innerHTML = chords.length ? chords.map((c) => `
         <button class="strip-chord" type="button" data-chord="${esc(c)}">
-          <b>${esc(c)}</b>${Music.diagramSVG(c, { scale: 0.78 })}
+          <b>${esc(c)}</b>${Music.diagram(c, { scale: 0.78 })}
         </button>`).join('') : `<p class="panel-note">${t('sheet.noChords')}</p>`;
       $$('.strip-chord', strip).forEach((b) => b.addEventListener('click', () => {
         playShape(b.dataset.chord);
@@ -999,7 +1129,12 @@
       else if (a === 'scroll') { toggleScroll(); return; }
       else if (a === 'play') {
         try { Music.audioCtx(); } catch (err) {}
-        if (Player.on) { Player.stop(); paintPlayer(); } else Player.start(song, mapChord);
+        if (Player.on) { Player.stop(); paintPlayer(); } else Player.start(song, mapChord, playOpts());
+        return;
+      }
+      else if (a === 'bpm+' || a === 'bpm-') {
+        st.bpm = Math.max(40, Math.min(220, st.bpm + (a === 'bpm+' ? 2 : -2)));
+        $('#dvBpm').textContent = st.bpm; saveViewPrefs(song.id, st); restart();
         return;
       }
       else if (a === 'fav') {
@@ -1014,11 +1149,180 @@
       if (Math.abs(st.steps) > 11) st.steps = 0;
       saveViewPrefs(song.id, st);
       update();
+      restart();
     }
     view._cleanup = () => view.removeEventListener('click', onAct);
 
+    // เครื่องดนตรี / สไตล์ / โซโล่ — เปลี่ยนระหว่างเล่นได้ (เริ่มเล่นใหม่ด้วยค่าใหม่)
+    $$('[data-inst]', view).forEach((b) => b.addEventListener('click', () => {
+      setInstrument(b.dataset.inst);
+      $$('[data-inst]', view).forEach((x) => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-checked', on); });
+      update(); restart(); playShape(mapChord(songChords(song.chordpro)[0] || 'C').shape);
+    }));
+    $('#playStyle').addEventListener('change', (e) => { PLAY.style = e.target.value; $('#patView').innerHTML = patternHTML(PLAY.style); restart(); });
+    $('#playSolo').addEventListener('change', (e) => { PLAY.solo = e.target.checked; restart(); });
+
     update();
+    renderTabPanel(song);
     FX.Orb.mount($('#orbStage'));
+  }
+
+  /* =====================================================================
+     TAB — แท็บโซโล่/ริฟฟ์ (Beta) จาก riff.js · เก็บที่ aq.riff.<id> แยกจาก SongDoc
+     ===================================================================== */
+  function loadRiff(id) {
+    try { const r = JSON.parse(ls.get('aq.riff.' + id, 'null')); return r && Array.isArray(r.notes) ? r : null; }
+    catch (e) { return null; }
+  }
+  const STR_NAMES = ['E', 'A', 'D', 'G', 'B', 'e'];
+  const TabPlay = {
+    on: false, gen: 0, timers: [],
+    stop() {
+      this.on = false; this.gen++;
+      this.timers.forEach(clearTimeout); this.timers = [];
+      $$('.tab-note.now').forEach((e) => e.classList.remove('now'));
+      const b = $('#tabPlay'); if (b) b.innerHTML = `${ic('play')}${t('tab.play')}`;
+    },
+  };
+  function fmtClock(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
+  // แท็บเป็นห้อง ๆ (flex-wrap ตัดบรรทัดเองตามความกว้างจอ) · ห้องว่างยาว ๆ ย่อเป็นตัวคั่น
+  // ตัวจับจังหวะรู้ "ตำแหน่งจังหวะ" แต่ไม่รู้ว่าจังหวะไหนคือต้นห้อง → เลือกจังหวะที่ตรงกับจุดเปลี่ยนคอร์ดมากที่สุด
+  function barPhase(bpm, phase, timeline) {
+    const beat = 60 / bpm, bar = beat * 4;
+    let best = +phase || 0, bestScore = -1;
+    if (!Array.isArray(timeline) || timeline.length < 3) return best;
+    for (let k = 0; k < 4; k++) {
+      const ph = (+phase || 0) + k * beat;
+      let score = 0;
+      timeline.forEach((e) => { const x = ((((+e.t || 0) - ph) % bar) + bar) % bar; if (Math.min(x, bar - x) < beat * 0.25) score++; });
+      if (score > bestScore) { bestScore = score; best = ph; }
+    }
+    return ((best % bar) + bar) % bar;
+  }
+  function tabBarsHTML(notes, bpm, phase) {
+    // มีกริดจังหวะ → ห้องละ 4 จังหวะเริ่มที่ phase จริงของเพลง · ไม่มีกริด → ช่วงละ 2.4 วิ (ไม่มีเลขห้อง)
+    const grid = bpm > 0;
+    const bar = grid ? (60 / bpm) * 4 : 2.4;
+    const ph = grid ? (+phase || 0) : 0;
+    const groups = new Map();
+    // โน้ตที่มาก่อนเส้นห้องนิดเดียว (ดีดเร็วกว่าจังหวะ) นับเป็นของห้องถัดไป
+    const tol = grid ? (60 / bpm) * 0.2 : 0;
+    notes.forEach((n, i) => { const b = Math.floor(((+n.t || 0) - ph + tol) / bar); if (!groups.has(b)) groups.set(b, []); groups.get(b).push(i); });
+    const keys = Array.from(groups.keys()).sort((a, b) => a - b);
+    const firstBar = keys.length ? keys[0] : 0;
+    let html = '', prev = null;
+    keys.forEach((b) => {
+      if (prev != null && b - prev > 1) html += `<div class="tab-gap" aria-hidden="true">· ${b - prev - 1} ${t('tab.restBars')} ·</div>`;
+      prev = b;
+      const t0 = ph + b * bar;
+      html += `<div class="tab-bar" data-bar="${b}"><span class="tab-num">${grid ? b - firstBar + 1 : ''} <i>${fmtClock(Math.max(0, t0))}</i></span>
+        <span class="tab-strs" aria-hidden="true">${STR_NAMES.slice().reverse().map((x) => `<i>${x}</i>`).join('')}</span>
+        ${groups.get(b).map((i) => {
+          const n = notes[i];
+          const s = Math.max(0, Math.min(5, n.s | 0)), f = Math.max(0, n.f | 0);
+          const x = 10 + Math.max(0, Math.min(1, ((+n.t || 0) - t0 + tol * 0.5) / bar)) * 86;
+          return `<button type="button" class="tab-note" data-i="${i}" style="left:${x.toFixed(2)}%;--row:${5 - s}" aria-label="${STR_NAMES[s]} ${f}">${f}</button>`;
+        }).join('')}
+      </div>`;
+    });
+    return html;
+  }
+  function tabText(riff, phase) {
+    if (window.Riff && typeof Riff.toAsciiTab === 'function') { try { return Riff.toAsciiTab(riff.notes, { bpm: riff.bpm || undefined, phase: riff.bpm ? phase : undefined }); } catch (e) {} }
+    // สำรอง: เรียงโน้ตตามเวลา บรรทัดละสาย
+    const lines = STR_NAMES.map((nm) => nm + '|');
+    riff.notes.forEach((n) => {
+      const w = String(n.f).length + 1;
+      for (let s = 0; s < 6; s++) lines[s] += s === n.s ? n.f + '-' : '-'.repeat(w);
+    });
+    return lines.reverse().join('\n');
+  }
+  function pickFileThen(fn) {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'audio/*,.mp3,.wav,.m4a,.aac,.flac,.ogg,.opus,.webm';
+    inp.addEventListener('change', () => { if (inp.files[0]) fn(inp.files[0]); });
+    inp.click();
+  }
+  function renderTabPanel(song) {
+    const el = $('#tabPanel');
+    if (!el) return;
+    const riff = loadRiff(song.id);
+    const head = `<div class="panel-head"><div><div class="eyebrow small">TAB · SOLO / RIFF <span class="chip chip-beta">Beta</span></div><h2 class="section-title">${t('tab.title')}</h2></div>`;
+    const fromFile = () => pickFileThen((f) => {
+      try { Music.audioCtx(); } catch (e) {}
+      ensureCopyrightAccepted(() => Job.start({ kind: 'file', file: f, riff: true, riffFor: song.id }));
+    });
+    if (!riff || !riff.notes.length) {
+      el.innerHTML = `${head}</div><p class="panel-note">${t('tab.none')}</p>
+        ${riffAvailable() ? `<div class="spot-actions"><button class="button secondary" type="button" id="tabFromFile">${ic('upload')}${t('tab.fromFile')}</button></div>` : ''}`;
+      const b = $('#tabFromFile', el); if (b) b.addEventListener('click', fromFile);
+      return;
+    }
+    const bpm = +riff.bpm > 0 ? +riff.bpm : null;
+    const phase = bpm ? barPhase(bpm, riff.phase, song.timeline) : 0;
+    const sp0 = ls.get('aq.tab.speed', '1');
+    el.innerHTML = `${head}
+        <div class="tab-actions">
+          <button class="button primary sm" type="button" id="tabPlay">${ic('play')}${t('tab.play')}</button>
+          <label class="mini-field tab-speed"><span class="sr-only">${t('tab.speed')}</span><select id="tabSpeed">${opt('0.5', '0.5×', sp0)}${opt('0.75', '0.75×', sp0)}${opt('1', '1×', sp0)}</select></label>
+          <button class="icon-btn" type="button" id="tabCopy" title="${esc(t('tab.copy'))}" aria-label="${esc(t('tab.copy'))}">${ic('copy')}</button>
+          <button class="icon-btn" type="button" id="tabDl" title="${esc(t('tab.download'))}" aria-label="${esc(t('tab.download'))}">${ic('download')}</button>
+          ${riffAvailable() ? `<button class="icon-btn" type="button" id="tabFromFile" title="${esc(t('tab.fromFile'))}" aria-label="${esc(t('tab.fromFile'))}">${ic('reset')}</button>` : ''}
+        </div>
+      </div>
+      <div class="tab-meta">${esc(tf(bpm ? 'tab.meta' : 'tab.metaFree', { n: riff.notes.length, bpm: Math.round(bpm || 0) }))}</div>
+      <div class="tab-wrap" id="tabWrap">${tabBarsHTML(riff.notes, bpm, phase)}</div>
+      <p class="panel-note">${t('tab.note')}</p>`;
+    const wrap = $('#tabWrap', el);
+    const tuning = Array.isArray(riff.tuning) && riff.tuning.length === 6 ? riff.tuning : [40, 45, 50, 55, 59, 64];
+    const midiOf = (n) => (n.s != null && n.f != null ? tuning[n.s | 0] + (n.f | 0) : +n.midi);
+    wrap.addEventListener('click', (e) => {
+      const b = e.target.closest('.tab-note'); if (!b) return;
+      const n = riff.notes[+b.dataset.i]; if (!n) return;
+      Music.note(midiOf(n), 0, Math.min(1.6, (+n.d || 0.4) + 0.4), 0.32, { guitar: true, bright: true });
+      b.classList.remove('now'); void b.offsetWidth; b.classList.add('now');
+      setTimeout(() => b.classList.remove('now'), 380);
+    });
+    const playBtn = $('#tabPlay', el);
+    $('#tabSpeed', el).addEventListener('change', (e) => { ls.set('aq.tab.speed', e.target.value); if (TabPlay.on) { TabPlay.stop(); playBtn.click(); } });
+    playBtn.addEventListener('click', () => {
+      if (TabPlay.on) { TabPlay.stop(); return; }
+      const c = Music.audioCtx();
+      const sp = parseFloat($('#tabSpeed', el).value) || 1;
+      const t0 = +riff.notes[0].t || 0, start = c.currentTime + 0.15;
+      TabPlay.on = true; const gen = ++TabPlay.gen;
+      playBtn.innerHTML = `${ic('stop')}${t('song.stop')}`;
+      const btns = $$('.tab-note', wrap);
+      riff.notes.forEach((n, i) => {
+        const at = ((+n.t || 0) - t0) / sp;
+        Music.noteAt(midiOf(n), start + at, Math.min(2, (+n.d || 0.3) / sp + 0.3), 0.3, { guitar: true, bright: true });
+        TabPlay.timers.push(setTimeout(() => {
+          if (!TabPlay.on || TabPlay.gen !== gen) return;
+          const b = btns[i]; if (!b) return;
+          $$('.tab-note.now', wrap).forEach((x) => x.classList.remove('now'));
+          b.classList.add('now');
+          const r = b.parentElement.getBoundingClientRect();
+          if (r.bottom > window.innerHeight - 90 || r.top < 80) b.parentElement.scrollIntoView({ block: 'center', behavior: motionOn() ? 'smooth' : 'auto' });
+        }, Math.max(0, (start + at - c.currentTime) * 1000)));
+      });
+      const last = riff.notes[riff.notes.length - 1];
+      TabPlay.timers.push(setTimeout(() => { if (TabPlay.gen === gen) TabPlay.stop(); }, (((+last.t || 0) - t0) / sp + 1.5) * 1000 + 150));
+    });
+    $('#tabCopy', el).addEventListener('click', () => {
+      const txt = tabText(riff, phase);
+      (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject(new Error('no clipboard')))
+        .then(() => toast(t('tab.copied'), { kind: 'ok' }), () => toast(t('tab.copyFail'), { kind: 'warn' }));
+    });
+    $('#tabDl', el).addEventListener('click', () => {
+      const blob = new Blob([`${song.title || 'AquaChord'} — TAB (AquaChord)\n\n${tabText(riff, phase)}\n`], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = (song.title || 'tab').replace(/[\\/:*?"<>|]+/g, ' ').trim().slice(0, 60) + ' (tab).txt';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    });
+    const ff = $('#tabFromFile', el);
+    if (ff) ff.addEventListener('click', () => {
+      confirmDialog({ title: t('tab.redoQ'), body: t('tab.redoDesc'), ok: t('tab.fromFile') }).then((ok) => { if (ok) fromFile(); });
+    });
   }
 
   function downloadSong(song) {
@@ -1045,7 +1349,7 @@
     pop.innerHTML = `
       <div class="cp-name">${esc(chord)}</div>
       <div class="cp-notes">${esc(Music.chordNotes(chord).join(' · '))}</div>
-      ${Music.diagramSVG(chord, { scale: 1.1 })}
+      ${Music.diagram(chord, { scale: 1.1 })}
       <div class="cp-actions">
         <button class="button primary sm" type="button" data-pp="play">${ic('play')}</button>
         <a class="button secondary sm" href="#/chords/${encodeURIComponent(chord)}">${t('nav.chords')} ${ic('next')}</a>
@@ -1115,6 +1419,7 @@
         <div class="spot-scan" aria-hidden="true"></div>
         <div class="lab-grid">
           <div class="lab-pick">
+            ${instSegHTML()}
             <div class="lab-label">${t('lab.root')}</div>
             <div class="root-grid" role="radiogroup" aria-label="${esc(t('lab.root'))}">
               ${ROOTS.map((r) => `<button type="button" role="radio" class="pick ${r === lab.root ? 'active' : ''}" aria-checked="${r === lab.root}" data-root="${r}">${r}</button>`).join('')}
@@ -1141,8 +1446,24 @@
       <section class="panel rise">
         <div class="panel-head"><div><div class="eyebrow small">${t('lab.popular')}</div><h2 class="section-title">${t('lab.popularTitle')}</h2></div></div>
         <div class="chord-strip wrap" id="popular">
-          ${POPULAR.map((c) => `<button class="strip-chord" type="button" data-pick="${c}"><b>${c}</b>${Music.diagramSVG(c, { scale: 0.78 })}</button>`).join('')}
+          ${POPULAR.map((c) => `<button class="strip-chord" type="button" data-pick="${c}"><b>${c}</b>${Music.diagram(c, { scale: 0.78 })}</button>`).join('')}
         </div>
+      </section>
+      <section class="panel rise">
+        <div class="panel-head">
+          <div><div class="eyebrow small">RHYTHM · ${t('lab.rhythm')}</div><h2 class="section-title">${t('lab.rhythmTitle')}</h2></div>
+          <label class="mini-field play-style"><span>${t('play.style')}</span><select id="labStyle">${styleOptionsHTML(PLAY.style === 'single' ? 'pop' : PLAY.style)}</select></label>
+        </div>
+        <div id="labPat">${patternHTML(PLAY.style === 'single' ? 'pop' : PLAY.style)}</div>
+        <div class="spot-actions">
+          <button type="button" class="button primary sm" id="labRhythm">${ic('play')}${t('lab.rhythmChord')}</button>
+          <button type="button" class="button secondary sm" id="labRhythmProg">${ic('note')}${t('lab.rhythmProg')}</button>
+          <label class="switch-row solo-row">
+            <span class="switch"><input type="checkbox" id="labSolo" ${PLAY.solo ? 'checked' : ''} /><i></i></span>
+            <span class="switch-text">${ic('spark')} ${t('play.solo')}</span>
+          </label>
+        </div>
+        <p class="panel-note">${t('lab.rhythmHint')}</p>
       </section>`;
 
     const name = () => lab.root + lab.q;
@@ -1151,13 +1472,13 @@
       $('#labShow').innerHTML = `
         <div class="lab-name">${esc(c)}</div>
         <div class="lab-notes">${esc(Music.chordNotes(c).join(' · '))}</div>
-        <div class="lab-diagram">${Music.diagramSVG(c, { scale: 1.9 })}</div>
+        <div class="lab-diagram">${Music.diagram(c, { scale: Music.getInstrument() === 'piano' ? 1.55 : 1.9 })}</div>
         <div class="spot-actions center">
           <button type="button" class="button primary" id="labStrum">${ic('play')}${t('lab.strum')}</button>
           <button type="button" class="button secondary" id="labArp">${ic('note')}${t('lab.arp')}</button>
         </div>`;
-      $('#labStrum').addEventListener('click', () => { Music.strum(Music.voicingMidis(c), 34); FX.Orb.pulse(); });
-      $('#labArp').addEventListener('click', () => { Music.voicingMidis(c).forEach((m, i) => Music.pluck(m, i * 0.24, 1.6, 0.3)); });
+      $('#labStrum').addEventListener('click', () => { Music.playChord(c); FX.Orb.pulse(); });
+      $('#labArp').addEventListener('click', () => { Music.chordVoicing(c).forEach((m, i) => Music.note(m, i * 0.24, 1.6, 0.3)); });
       ls.set('aq.lab.root', lab.root); ls.set('aq.lab.q', lab.q);
     }
     function paintKey() {
@@ -1165,7 +1486,7 @@
       $('#keyTitle').textContent = `${lab.root} ${lab.minor ? 'minor' : 'major'}`;
       $('#keyChords').innerHTML = list.map((d) => `
         <button type="button" class="key-chord" data-pick="${esc(d.chord)}">
-          <span class="kc-roman">${d.roman}</span><b>${esc(d.chord)}</b>${Music.diagramSVG(d.chord, { scale: 0.62 })}
+          <span class="kc-roman">${d.roman}</span><b>${esc(d.chord)}</b>${Music.diagram(d.chord, { scale: 0.62 })}
         </button>`).join('');
       wirePicks($('#keyChords'));
       ls.set('aq.lab.minor', lab.minor ? '1' : '0');
@@ -1180,7 +1501,7 @@
     }
     function wirePicks(root) {
       $$('[data-pick]', root).forEach((b) => b.addEventListener('click', () => {
-        Music.strum(Music.voicingMidis(b.dataset.pick), 30); FX.Orb.pulse();
+        Music.playChord(b.dataset.pick); FX.Orb.pulse();
         b.classList.remove('ring'); void b.offsetWidth; b.classList.add('ring');
         selectChord(b.dataset.pick);
       }));
@@ -1188,12 +1509,12 @@
     $$('[data-root]', view).forEach((b) => b.addEventListener('click', () => {
       lab.root = b.dataset.root;
       $$('[data-root]', view).forEach((x) => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-checked', on); });
-      paintShow(); paintKey(); Music.strum(Music.voicingMidis(name()), 30);
+      paintShow(); paintKey(); Music.playChord(name());
     }));
     $$('[data-q]', view).forEach((b) => b.addEventListener('click', () => {
       lab.q = b.dataset.q;
       $$('[data-q]', view).forEach((x) => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-checked', on); });
-      paintShow(); Music.strum(Music.voicingMidis(name()), 30);
+      paintShow(); Music.playChord(name());
     }));
     $$('[data-minor]', view).forEach((b) => b.addEventListener('click', () => {
       lab.minor = b.dataset.minor === '1';
@@ -1205,12 +1526,55 @@
       const d = diatonic(lab.root, lab.minor);
       const prog = lab.minor ? [d[0], d[5], d[2], d[6]] : [d[0], d[4], d[5], d[3]];
       prog.forEach((x, i) => setTimeout(() => {
-        Music.strum(Music.voicingMidis(x.chord), 30); FX.Orb.pulse();
+        Music.playChord(x.chord); FX.Orb.pulse();
         const el = $(`#keyChords [data-pick="${CSS.escape(x.chord)}"]`);
         if (el) { el.classList.remove('ring'); void el.offsetWidth; el.classList.add('ring'); }
       }, i * 900));
     });
     wirePicks($('#popular'));
+    // เครื่องดนตรี (ไดอะแกรมเปลี่ยนเป็นคีย์เปียโน/ท่าจับกีตาร์)
+    $$('[data-inst]', view).forEach((b) => b.addEventListener('click', () => {
+      setInstrument(b.dataset.inst);
+      $$('[data-inst]', view).forEach((x) => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-checked', on); });
+      paintShow(); paintKey();
+      $('#popular').innerHTML = POPULAR.map((c) => `<button class="strip-chord" type="button" data-pick="${c}"><b>${c}</b>${Music.diagram(c, { scale: 0.78 })}</button>`).join('');
+      wirePicks($('#popular'));
+      Music.playChord(name());
+    }));
+    // จังหวะการตี: ตีคอร์ดที่เลือกวน 2 ห้อง หรือทางเดินคอร์ดยอดนิยมในคีย์
+    let labStyle = PLAY.style === 'single' ? 'pop' : PLAY.style;
+    const rhythmBtns = () => [$('#labRhythm'), $('#labRhythmProg')];
+    const paintRhythmBtns = (which) => {
+      const [a, b] = rhythmBtns();
+      a.innerHTML = which === 'chord' ? `${ic('stop')}${t('song.stop')}` : `${ic('play')}${t('lab.rhythmChord')}`;
+      b.innerHTML = which === 'prog' ? `${ic('stop')}${t('song.stop')}` : `${ic('note')}${t('lab.rhythmProg')}`;
+    };
+    let playing = null;
+    const playRhythm = (which) => {
+      if (playing === which) { Music.rhythm.stop(); playing = null; paintRhythmBtns(null); paintSteps(-1); return; }
+      const bpm = 92, bar = (60 / bpm) * ((Music.PATTERNS.find((p) => p.id === labStyle) || {}).meter || 4);
+      let seq;
+      if (which === 'chord') seq = [{ t: 0, chord: name() }];
+      else {
+        const d = diatonic(lab.root, lab.minor);
+        seq = (lab.minor ? [d[0], d[5], d[2], d[6]] : [d[0], d[4], d[5], d[3]]).map((x, i) => ({ t: i * bar, chord: x.chord }));
+      }
+      try { Music.audioCtx(); } catch (e) {}
+      const ok = Music.rhythm.play({
+        seq, end: seq.length * bar, bpm, pattern: labStyle, solo: $('#labSolo').checked, key: lab.root + (lab.minor ? 'm' : ''), seed: 11, repeat: which === 'chord' ? 2 : 2,
+        onChord: () => FX.Orb.pulse(), onStep: (k) => paintSteps(k),
+        onEnd: () => { playing = null; paintRhythmBtns(null); paintSteps(-1); },
+      });
+      if (ok) { playing = which; paintRhythmBtns(which); }
+    };
+    $('#labRhythm').addEventListener('click', () => playRhythm('chord'));
+    $('#labRhythmProg').addEventListener('click', () => playRhythm('prog'));
+    $('#labStyle').addEventListener('change', (e) => {
+      labStyle = e.target.value; PLAY.style = labStyle;
+      $('#labPat').innerHTML = patternHTML(labStyle);
+      if (playing) { const w = playing; playing = null; playRhythm(w); }
+    });
+    $('#labSolo').addEventListener('change', (e) => { PLAY.solo = e.target.checked; if (playing) { const w = playing; playing = null; playRhythm(w); } });
     paintShow(); paintKey();
   }
 
@@ -1292,7 +1656,7 @@
       if (!sel && post) body.selectionStart = body.selectionEnd = s + pre.length;
       body.focus();
       renderPreview();
-      const m = /^\[(.+)\]$/.exec(pre); if (m) Music.strum(Music.voicingMidis(m[1]), 26);
+      const m = /^\[(.+)\]$/.exec(pre); if (m) Music.playChord(m[1]);
     }));
 
     $('#eSave').addEventListener('click', () => {
@@ -1339,6 +1703,8 @@
           <h2 class="panel-title">${ic('globe')}${t('settings.general')}</h2>
           <div class="setting-row"><div><div class="sr-label">${t('settings.language')}</div><div class="sr-desc">${t('settings.languageDesc')}</div></div>
             ${seg2('lang', ['th', 'ไทย'], ['en', 'EN'], I18N.get())}</div>
+          <div class="setting-row"><div><div class="sr-label">${t('settings.instrument')}</div><div class="sr-desc">${t('settings.instrumentDesc')}</div></div>
+            ${seg2('inst', ['guitar', t('inst.guitar')], ['piano', t('inst.piano')], Music.getInstrument())}</div>
           <div class="setting-row"><div><div class="sr-label">${t('settings.motion')}</div><div class="sr-desc">${t('settings.motionDesc')}</div></div>
             ${seg2('motion', ['on', t('common.on')], ['off', t('common.off')], motionOn() ? 'on' : 'off')}</div>
           <div class="setting-row"><div><div class="sr-label">${t('settings.guide')}</div><div class="sr-desc">${t('settings.guideDesc')}</div></div>
@@ -1369,6 +1735,8 @@
           <h2 class="panel-title">${ic('phone')}${t('settings.app')}</h2>
           <div class="setting-row"><div><div class="sr-label">${t('settings.install')}</div><div class="sr-desc" id="installDesc"></div></div>
             <button class="button primary sm" type="button" id="installBtn2" hidden>${ic('download')}${t('install')}</button></div>
+          <div class="setting-row stack"><div><div class="sr-label">${t('settings.device')}</div><div class="sr-desc">${t('settings.deviceDesc')}</div></div>
+            <div class="gpu-line" data-gpu-line>${ic('spark')} ${t('gpu.checking')}</div></div>
           <div class="setting-row"><div><div class="sr-label">${t('settings.copyright')}</div><div class="sr-desc">${t('settings.copyrightDesc')}</div></div>
             <button class="button secondary sm" type="button" id="cpBtn">${t('common.read')}</button></div>
           <div class="setting-row"><div><div class="sr-label">${t('settings.tour')}</div><div class="sr-desc">${t('settings.tourDesc')}</div></div>
@@ -1384,8 +1752,10 @@
       else if (name === 'motion') setMotion(v === 'on');
       else if (name === 'guide') { ls.set('aq.guide.off', v === 'off' ? '1' : '0'); if (GD()) GD().setEnabled(v === 'on'); }
       else if (name === 'lyr') lyrPref.on = v === 'on';
+      else if (name === 'inst') { setInstrument(v); Music.playChord('C'); }
     })));
     wireLyricsSelects(view);
+    paintGpu(view);
 
     $('#exportBtn').addEventListener('click', () => {
       const blob = new Blob([Store.exportJSON()], { type: 'application/json' });
@@ -1402,7 +1772,7 @@
     $('#clearBtn').addEventListener('click', () => {
       confirmDialog({ title: t('settings.clearQ'), body: tf('settings.clearDesc', { n: songs.length }), ok: t('settings.clear'), danger: true }).then((ok) => {
         if (!ok) return;
-        Store.all().forEach((s) => { Store.remove(s.id); ls.del('aq.view.' + s.id); });
+        Store.all().forEach((s) => { Store.remove(s.id); ls.del('aq.view.' + s.id); ls.del('aq.riff.' + s.id); });
         refreshShell(); renderSettings(); toast(t('settings.cleared'));
       });
     });
@@ -1452,6 +1822,7 @@
     view._paintLibrary = null;
     stopAutoScroll();
     if (Player.on) Player.stop();
+    Music.rhythm.stop(); TabPlay.stop();
     paintPlayer();
     closeChordPop();
     FX.Orb.detach();
