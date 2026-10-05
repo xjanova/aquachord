@@ -1,12 +1,13 @@
 /* AquaChord service worker — precache app shell, offline-first */
-const CACHE = 'aquachord-1.3.1';
+const CACHE = 'aquachord-1.4.0';
 const ASSETS = [
   './',
   './index.html',
   './assets/styles.css',
-  './assets/favicon.svg',
-  './assets/logo.png',
-  './assets/logo-mark.png',
+  './assets/brand/logo-520.webp',
+  './assets/brand/mark-96.webp',
+  './assets/brand/mark-64.png',
+  './assets/guide/face-160.webp',
   './assets/mascot.webp',
   './assets/mascot-sm.webp',
   './assets/js/i18n.js',
@@ -17,6 +18,8 @@ const ASSETS = [
   './assets/js/lyrics.js',
   './assets/js/lyrics-worker.js',
   './assets/js/analyze.js',
+  './assets/js/fx.js',
+  './assets/js/guide.js',
   './assets/js/app.js',
   './manifest.webmanifest',
   './icons/pwa-192.png',
@@ -40,11 +43,13 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   // อย่าแตะ backend หรือหลังบ้าน — ให้วิ่ง network ตรง ๆ (กัน API/หน้าแอดมินถูกแคช)
   if (url.origin === location.origin && (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin/'))) return;
+  // คลิปวิดีโอไกด์ / คำขอแบบ Range → ปล่อยเบราว์เซอร์จัดการเอง (Cache API เก็บ 206 ไม่ได้)
+  if (req.headers.has('range') || url.pathname.includes('/assets/guide/clips/')) return;
   // Google Fonts: stale-while-revalidate
   if (url.hostname.includes('fonts.g')) {
     e.respondWith(
       caches.open(CACHE).then((c) => c.match(req).then((hit) => {
-        const net = fetch(req).then((res) => { c.put(req, res.clone()); return res; }).catch(() => hit);
+        const net = fetch(req).then((res) => { if (res.ok || res.type === 'opaque') c.put(req, res.clone()); return res; }).catch(() => hit);
         return hit || net;
       }))
     );
@@ -54,8 +59,10 @@ self.addEventListener('fetch', (e) => {
   // app shell: cache-first, fall back to network, then index for navigations
   e.respondWith(
     caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(req, copy));
+      if (res.ok && res.status === 200) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+      }
       return res;
     }).catch(() => req.mode === 'navigate' ? caches.match('./index.html') : undefined))
   );

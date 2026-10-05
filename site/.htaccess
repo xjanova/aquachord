@@ -10,6 +10,10 @@
   <FilesMatch "\.(css|js|webp|png|svg|woff2)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
+  # คลิปไกด์ (ใหญ่ ~1 MB/ไฟล์) — URL มี ?v=CLIP_V ใน guide.js → แคชยาวได้ บัมป์ v เมื่อเข้ารหัสใหม่
+  <FilesMatch "\.webm$">
+    Header set Cache-Control "public, max-age=2592000"
+  </FilesMatch>
   # ไฟล์ที่ต้องสดเสมอ — วางท้ายสุดให้ทับกฎด้านบน
   <FilesMatch "(sw\.js|index\.html|\.webmanifest|version\.json)$">
     Header set Cache-Control "no-store, no-cache, must-revalidate, max-age=0"
@@ -20,4 +24,5 @@
 <IfModule mod_mime.c>
   AddType application/manifest+json .webmanifest
   AddType image/webp .webp
+  AddType video/webm .webm
 </IfModule>
