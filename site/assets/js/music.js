@@ -166,10 +166,90 @@
   }
 
   // เล่นโน้ตที่เวลา t0 (เวลาของ AudioContext) — o: { mute, bright, bend, bendTime, vib }
+  /* ---------- เสียงเฉพาะแทร็ก (มิกเซอร์หลายเครื่องดนตรี): กลองสังเคราะห์ · ลีด · เสียงร้อง ---------- */
+  let noiseBuf = null;
+  function noise() {
+    if (noiseBuf) return noiseBuf;
+    const c = audioCtx(), len = Math.floor(c.sampleRate * 1.2);
+    noiseBuf = c.createBuffer(1, len, c.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    return noiseBuf;
+  }
+  function env(g, t0, peak, attack, decay) {
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), t0 + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + attack + decay);
+  }
+  // คีย์กลองแบบ GM: 35/36 กระเดื่อง · 37/38/40 สแนร์ · 42/44 ไฮแฮตปิด · 46 เปิด · 49/57 แฉ · 51/59 ride · 41–50 ทอม
+  function drumAt(key, t0, vol, dest) {
+    const c = audioCtx(), out = dest || output();
+    vol = Math.max(0.05, Math.min(1, vol));
+    if (key === 35 || key === 36) {
+      const o = c.createOscillator(), g = c.createGain();
+      o.frequency.setValueAtTime(150, t0); o.frequency.exponentialRampToValueAtTime(45, t0 + 0.12);
+      env(g, t0, 0.9 * vol, 0.003, 0.32);
+      o.connect(g).connect(out); o.start(t0); o.stop(t0 + 0.4);
+      return;
+    }
+    if (key >= 41 && key <= 50 && key !== 42 && key !== 44 && key !== 46 && key !== 49) {
+      const o = c.createOscillator(), g = c.createGain();
+      const f = 80 + (key - 41) * 18;
+      o.frequency.setValueAtTime(f * 1.6, t0); o.frequency.exponentialRampToValueAtTime(f, t0 + 0.08);
+      env(g, t0, 0.55 * vol, 0.004, 0.3);
+      o.connect(g).connect(out); o.start(t0); o.stop(t0 + 0.4);
+      return;
+    }
+    const src = c.createBufferSource(); src.buffer = noise();
+    const f = c.createBiquadFilter(), g = c.createGain();
+    if (key === 37 || key === 38 || key === 40) {
+      f.type = 'bandpass'; f.frequency.value = 1800; f.Q.value = 0.7;
+      env(g, t0, 0.55 * vol, 0.002, 0.18);
+      const o = c.createOscillator(), og = c.createGain();
+      o.frequency.setValueAtTime(220, t0); o.frequency.exponentialRampToValueAtTime(160, t0 + 0.08);
+      env(og, t0, 0.35 * vol, 0.002, 0.1);
+      o.connect(og).connect(out); o.start(t0); o.stop(t0 + 0.2);
+    } else if (key === 46) { f.type = 'highpass'; f.frequency.value = 7000; env(g, t0, 0.22 * vol, 0.002, 0.32); }
+    else if (key === 49 || key === 57 || key === 52 || key === 55) { f.type = 'highpass'; f.frequency.value = 5000; env(g, t0, 0.28 * vol, 0.004, 1.1); }
+    else if (key === 51 || key === 59 || key === 53) { f.type = 'bandpass'; f.frequency.value = 6500; f.Q.value = 1.5; env(g, t0, 0.18 * vol, 0.002, 0.45); }
+    else { f.type = 'highpass'; f.frequency.value = 8000; env(g, t0, 0.2 * vol, 0.001, 0.05); }
+    src.connect(f).connect(g).connect(out);
+    src.start(t0, Math.random() * 0.5); src.stop(t0 + 1.3);
+  }
+  // ลีดซินธ์ (ทำนอง) / เสียงร้อง (ไซน์นุ่ม + ไวเบรโต)
+  function synthAt(midi, t0, dur, vol, voice, dest) {
+    const c = audioCtx(), out = dest || output();
+    const f0 = mtof(midi);
+    dur = Math.max(0.05, Math.min(dur, 6));
+    const g = c.createGain(), lp = c.createBiquadFilter();
+    lp.type = 'lowpass'; lp.frequency.value = voice === 'voice' ? 1800 : 3200;
+    const oscs = voice === 'voice' ? [['sine', 1, 0.7], ['triangle', 2, 0.18]] : [['sawtooth', 1, 0.35], ['triangle', 1.003, 0.45]];
+    const vib = c.createOscillator(), vg = c.createGain();
+    vib.frequency.value = 5.2; vg.gain.value = f0 * 0.006;
+    vib.connect(vg);
+    oscs.forEach(([type, mul, amp]) => {
+      const o = c.createOscillator(), og = c.createGain();
+      o.type = type; o.frequency.value = f0 * mul; og.gain.value = amp;
+      vg.connect(o.frequency);
+      o.connect(og).connect(lp);
+      o.start(t0); o.stop(t0 + dur + 0.15);
+    });
+    vib.start(t0 + 0.12); vib.stop(t0 + dur + 0.15);
+    const a = voice === 'voice' ? 0.04 : 0.01;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime(vol, t0 + a);
+    g.gain.setValueAtTime(vol * 0.85, t0 + Math.max(a + 0.01, dur - 0.06));
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur + 0.12);
+    lp.connect(g).connect(out);
+  }
+
   function noteAt(midi, t0, dur, vol, o) {
     o = o || {};
+    if (o.voice === 'drum') { drumAt(midi, t0, vol, o.dest); return; }
+    if (o.voice === 'lead' || o.voice === 'voice') { synthAt(midi, t0, dur || 0.5, vol, o.voice, o.dest); return; }
     const c = audioCtx();
-    const piano = instrument === 'piano' && !o.guitar;
+    const piano = o.voice ? o.voice === 'piano' : (instrument === 'piano' && !o.guitar);
+    if (o.voice === 'bass') { o = Object.assign({}, o); o.bassTone = true; }
     const maxDur = piano ? 3.1 : 2.5;
     dur = Math.max(0.03, Math.min(dur || 1.5, maxDur));
     const src = c.createBufferSource();
@@ -186,13 +266,13 @@
       lfo.start(t0 + 0.12); lfo.stop(t0 + dur);
     }
     const lp = c.createBiquadFilter(); lp.type = 'lowpass';
-    lp.frequency.value = o.mute ? 900 : (o.bright ? 6500 : (piano ? 7000 : 3800));
+    lp.frequency.value = o.bassTone ? 1100 : o.mute ? 900 : (o.bright ? 6500 : (piano ? 7000 : 3800));
     const g = c.createGain();
     const rel = piano ? 0.18 : (o.mute ? 0.04 : 0.08);
     g.gain.setValueAtTime(vol, t0);
     g.gain.setValueAtTime(vol, t0 + Math.max(0.01, dur - rel));
     g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
-    src.connect(lp).connect(g).connect(output());
+    src.connect(lp).connect(g).connect(o.dest || output());
     src.start(t0); src.stop(t0 + dur + 0.02);
   }
   // เวลาแบบสัมพัทธ์ (วินาทีจากตอนนี้)
@@ -604,7 +684,7 @@
     SHARP, FLAT, PATTERNS, GLYPH,
     parseChord, isChord, transposeChord, transposeKey,
     chordToMidis, chordNotes, voicingMidis, pianoVoicing, chordVoicing, noteNameToMidi,
-    pluck, note, noteAt, strum, playChord,
+    pluck, note, noteAt, drumAt, strum, playChord, output,
     setInstrument, getInstrument,
     rhythm: { play: rhythmPlay, stop: rhythmStop, get on() { return R.on; }, countLabels },
     diagram, diagramSVG, pianoSVG, shapeFor, audioCtx,

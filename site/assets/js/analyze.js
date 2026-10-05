@@ -10,10 +10,28 @@
   const LYR_STAGES = ['ingest', 'prep', 'beats', 'chords', 'key', 'lyrics', 'assemble'];
   const RIFF_STAGES = ['ingest', 'prep', 'beats', 'chords', 'key', 'riff', 'assemble'];
   const LYR_RIFF_STAGES = ['ingest', 'prep', 'beats', 'chords', 'key', 'riff', 'lyrics', 'assemble'];
-  // stages(x) แบบเดิมยังคืน array เดิมทุกประการ — withRiff เป็นพารามิเตอร์เสริม
-  function stages(withLyrics, withRiff) {
-    if (withRiff) return withLyrics ? LYR_RIFF_STAGES : RIFF_STAGES;
-    return withLyrics ? LYR_STAGES : BASE_STAGES;
+  // โหมดแกะแทร็ก: 'lite' (ทุกเครื่อง, CPU) | 'full' (WebGPU: แยก stem ด้วย Demucs ก่อน) | null = ปิด
+  function tracksModeOf(v) { return v === 'full' ? 'full' : (v === 'lite' || v === true) ? 'lite' : null; }
+  /* stages(x) / stages(x, riff) แบบเดิมยังคืน array เดิมทุกประการ
+     stages(lyrics, riff, tracks) หรือ stages({ lyrics, riff, tracks }) — tracks: 'lite' | 'full'
+     full: ingest → prep → beats → separate → chords (บน instrumental) → key → [riff] → [lyrics] → tracks → assemble */
+  function stages(withLyrics, withRiff, tracks) {
+    if (withLyrics && typeof withLyrics === 'object') {
+      const o = withLyrics;
+      return stages(!!o.lyrics, !!o.riff, o.tracks);
+    }
+    const mode = tracksModeOf(tracks);
+    if (!mode) {
+      if (withRiff) return withLyrics ? LYR_RIFF_STAGES : RIFF_STAGES;
+      return withLyrics ? LYR_STAGES : BASE_STAGES;
+    }
+    const s = ['ingest', 'prep', 'beats'];
+    if (mode === 'full') s.push('separate');
+    s.push('chords', 'key');
+    if (withRiff) s.push('riff');
+    if (withLyrics) s.push('lyrics');
+    s.push('tracks', 'assemble');
+    return s;
   }
 
   const TARGET_SR = 11025;        // พอสำหรับคอร์ด (สนใจแค่ 55–1900 Hz)
@@ -202,11 +220,30 @@
   // แกะริฟฟ์ใช้เวลา ~1.3–1.8 เท่าของขั้นคอร์ด (STFT hop ~12ms ทั้งเพลง — วัดจากเพลง 4 นาทีใน Node)
   const PCT_RIFF = { ingest: [0, 4], prep: [4, 9], beats: [9, 18], chords: [18, 46], key: [46, 48], riff: [48, 96], assemble: [96, 99] };
   const PCT_LYR_RIFF = { ingest: [0, 4], prep: [4, 8], beats: [8, 13], chords: [13, 28], key: [28, 30], riff: [30, 52], lyrics: [52, 94], assemble: [94, 99] };
+  // โหมดแกะแทร็ก: น้ำหนักเวลาต่อ stage วัดจากเพลง 2 นาทีใน Chrome (GTX 1070 Ti): ingest 0.45s · beats 0.4s ·
+  // chords 0.9s · tracks lite 13.5s · separate 31s · tracks full 8s (riff/lyrics ประมาณจากเทสต์เดิม) → ช่วง % ตามลำดับจริง
+  const W_STAGE = { ingest: 3, prep: 1, beats: 3, separate: 75, chords: 6, key: 0.5, riff: 10, lyrics: 40, tracks: 70, assemble: 1 };
+  function pctFor(list, mode) {
+    const w = Object.assign({}, W_STAGE, mode === 'full' ? { tracks: 20 } : null);
+    const tot = list.reduce((s, k) => s + (w[k] || 1), 0);
+    const out = {};
+    let acc = 0;
+    list.forEach((k) => { const a = acc; acc += w[k] || 1; out[k] = [Math.round((a / tot) * 99), Math.round((acc / tot) * 99)]; });
+    return out;
+  }
+  const errCode = (e) => (e && (e.code === 'gpu' || e.code === 'load' || e.code === 'run') ? e.code : 'run');
+  // TrackSet ตามสัญญา v1 เท่านั้น (ตัดของแถม เช่น instrumentalMono11k / _debug ก่อนติดไปกับ doc)
+  const cleanTrackSet = (ts) => ({
+    v: 1, source: ts.source, bpm: ts.bpm == null ? null : ts.bpm, phase: ts.phase == null ? null : ts.phase,
+    duration: ts.duration, tracks: Array.isArray(ts.tracks) ? ts.tracks : [],
+  });
 
-  async function run(input, onProgress, ctl) {
+  async function runCore(input, onProgress, ctl, hold) {
     const withLyrics = !!(input.lyrics && window.Lyrics);
     const withRiff = !!input.riff;
-    const PCT = withRiff ? (withLyrics ? PCT_LYR_RIFF : PCT_RIFF) : (withLyrics ? PCT_LYR : PCT_BASE);
+    const tracksMode = tracksModeOf(input.tracks);
+    const PCT = tracksMode ? pctFor(stages(withLyrics, withRiff, tracksMode), tracksMode)
+      : withRiff ? (withLyrics ? PCT_LYR_RIFF : PCT_RIFF) : (withLyrics ? PCT_LYR : PCT_BASE);
     const P = (stage, frac, detail) => {
       if (!onProgress) return;
       const r = PCT[stage] || [0, 99];
@@ -243,13 +280,41 @@
       onPct: (p) => P(stage, f0 + p * (f1 - f0)),
     });
 
-    // 3) beats: จับ BPM + beat phase
+    // 3) beats: จับ BPM + beat phase (จากมิกซ์เต็ม — กลองช่วยให้จังหวะชัด)
     const { bpm, phase } = await DSP.detectTempo(data, sr, dspOpts('beats', 0, 1));
     chk(ctl); P('beats', 1);
 
+    // 3b) [full] separate: แยก stem ด้วย Demucs บน GPU — ได้เสียงดนตรีล้วน (ไม่มีกลอง/ร้อง) ไว้แกะคอร์ด
+    // พัง/ไม่มี WebGPU → ทำต่อแบบเดิมทั้งหมด และขั้น tracks ตกไปโหมด lite (doc._tracksFallback)
+    let sep = null, tracksError = null, tracksFallback = false, trackSet = null;
+    const cancelled = (e) => (ctl && ctl.aborted) || (e && e.message === 'cancelled');
+    if (tracksMode === 'full') {
+      P('separate', 0);
+      try {
+        if (!window.Stems) throw mkErr('load');
+        const caps = await Stems.capabilities();
+        chk(ctl);
+        if (!caps || !caps.fullOK) throw mkErr('gpu');
+        sep = await Stems.separate(audio, {
+          maxSeconds: seconds, wantVocalsPcm16k: withLyrics,
+          tick, chk: () => chk(ctl), onPct: (f, d) => P('separate', f, d),
+        });
+        hold.sep = sep; // run() ปล่อยคืนให้เสมอ (สำเร็จ/พัง/ยกเลิก)
+        chk(ctl);
+      } catch (e) {
+        if (cancelled(e)) throw new Error('cancelled');
+        tracksError = errCode(e); tracksFallback = true; sep = null;
+      }
+      P('separate', 1);
+    }
+
     // 4) chords: chromagram + Viterbi (เพลงยาวใช้ hop หยาบขึ้น ประหยัด CPU มือถือ)
+    // full: ใช้ instrumental (เบส+กีตาร์+เปียโน+อื่น ๆ 11025Hz) แทนมิกซ์ — กลอง/เสียงร้องไม่เลอะ chromagram
+    const useInst = !!(sep && sep.instrumentalMono11k && sep.instrumentalMono11k.length > TARGET_SR * 5);
+    const cData = useInst ? sep.instrumentalMono11k : data;
+    const cSr = useInst ? TARGET_SR : sr;
     const hop = seconds > 420 ? 2048 : 1024;
-    const ch = await DSP.analyzeChroma(data, sr, Object.assign({ hop }, dspOpts('chords', 0, 0.6)));
+    const ch = await DSP.analyzeChroma(cData, cSr, Object.assign({ hop }, dspOpts('chords', 0, 0.6)));
     chk(ctl);
     const dec = await DSP.decodeChords(ch.chroma, ch.bass, ch.rms, ch.F,
       Object.assign({ frameSec: ch.frameSec }, dspOpts('chords', 0.6, 1)));
@@ -268,7 +333,14 @@
       try {
         if (!window.Riff) throw new Error('riff.js not loaded');
         P('riff', 0);
-        const rr = await Riff.extract(data, sr, Object.assign({ bpm, phase }, dspOpts('riff', 0, 0.97)));
+        // full: แกะจาก stem กีตาร์ (ไม่มี → stem "other") — ไม่มีกลอง/ร้อง/เบสกวน · ดึงไม่ได้ → มิกซ์เหมือนเดิม
+        let rData = data, rSr = sr;
+        const rStem = sep && sep.present ? (sep.present.guitar ? 'guitar' : sep.present.other ? 'other' : null) : null;
+        if (rStem) {
+          try { rData = await sep.stem(rStem, TARGET_SR); rSr = TARGET_SR; }
+          catch (e) { if (cancelled(e)) throw new Error('cancelled'); rData = data; rSr = sr; }
+        }
+        const rr = await Riff.extract(rData, rSr, Object.assign({ bpm, phase }, dspOpts('riff', 0, 0.97)));
         chk(ctl);
         const g = rr.grid;
         riff = {
@@ -292,10 +364,17 @@
 
     // 6) [ตัวเลือก] lyrics: Whisper ใน worker (เสียง 16kHz แยกเสียงร้องแล้ว)
     let lyrChunks = null, lyricsError = null, vocalIsolated = false, lyrDevice = null;
-    if (withLyrics) {
+    // full: Demucs บอกว่า stem เสียงร้องเงียบ (เพลงบรรเลง ~−70dB · มีเสียงร้อง ~0dB เทียบมิกซ์) → ข้าม Whisper
+    // (บนเพลงบรรเลง Whisper วนสร้างข้อความมั่วได้หลายนาที) ผลเท่ากับ "ไม่พบเนื้อร้อง"
+    const noVocals = !!(sep && sep.level && Number.isFinite(sep.level.vocals) && sep.level.vocals < -40);
+    if (withLyrics && noVocals) P('lyrics', 1);
+    else if (withLyrics) {
       try {
         P('lyrics', 0.02, I18N.t('job.lyr.prep'));
-        const vox = await toVocalPCM(audio, seconds);
+        // full: stem เสียงร้องจาก Demucs (สะอาดกว่าการดึงเสียงกลางสเตอริโอมาก) · ไม่มี → วิธีเดิม
+        const vox = sep && sep.vocalsPcm16k && sep.vocalsPcm16k.length
+          ? { data: DSP.prepForASR(sep.vocalsPcm16k, LYR_SR), isolated: true }
+          : await toVocalPCM(audio, seconds);
         const pcm16 = vox.data;
         vocalIsolated = vox.isolated;
         chk(ctl);
@@ -322,6 +401,36 @@
       }
     }
     chk(ctl);
+
+    // 6b) [ตัวเลือก] tracks: แกะไลน์ทุกเครื่องดนตรีเป็นโน้ตแบบ MIDI (TrackSet v1) → doc._tracks
+    // full = ต่อจาก stem ที่แยกไว้ · lite / full พัง = HPSS + Basic Pitch บน CPU
+    // พังเองไม่ทำให้ทั้งงานล้ม (ได้ชีตคอร์ดตามปกติ + doc._tracksError) แต่ยกเลิกต้องยกเลิกจริง
+    if (tracksMode) {
+      let base = 0;
+      const tOpts = (a) => ({
+        bpm, phase, key, chordSegs: segs, maxSeconds: seconds,
+        tick, chk: () => chk(ctl), onPct: (f, d) => { base = a + (1 - a) * Math.max(0, Math.min(1, f)); P('tracks', base, d); },
+      });
+      P('tracks', 0);
+      try {
+        if (!window.Stems) throw mkErr('load');
+        if (sep) {
+          try { trackSet = await sep.tracks(tOpts(0)); }
+          catch (e) {
+            if (cancelled(e)) throw new Error('cancelled');
+            if (errCode(e) === 'load') throw e; // โหลด Basic Pitch ไม่ได้ → lite ก็โหลดไม่ได้เหมือนกัน
+            tracksError = errCode(e); tracksFallback = true; trackSet = null;
+          }
+        }
+        if (!trackSet) trackSet = await Stems.transcribe(audio, Object.assign({ mode: 'lite' }, tOpts(base)));
+        chk(ctl);
+      } catch (e) {
+        if (cancelled(e)) throw new Error('cancelled');
+        trackSet = null;
+        tracksError = errCode(e);
+      }
+      P('tracks', 1);
+    }
 
     // 7) assemble: ChordPro + SongDoc
     const title = prettyTitle(srcName);
@@ -367,7 +476,19 @@
     if (lyricsEmpty) doc.lyricsEmpty = true;
     if (riff) doc._riff = riff;
     if (riffError) doc._riffError = riffError;
+    // แทร็กเครื่องดนตรีเก็บนอก SongDoc เหมือน _riff (แอปย้ายไป IndexedDB แล้วลบออกก่อนบันทึก)
+    // _tracksError: เหตุที่โหมดที่ขอใช้ไม่ได้ ('gpu' | 'load' | 'run') · _tracksFallback: full ใช้ไม่ได้ → ได้ผล lite แทน
+    if (trackSet) doc._tracks = cleanTrackSet(trackSet);
+    if (tracksMode && tracksError) doc._tracksError = tracksError;
+    if (tracksMode && tracksFallback && trackSet) doc._tracksFallback = true;
     return doc;
+  }
+
+  // ผลแยก stem (หน่วยความจำ ~130MB ใน worker) ต้องคืนทุกกรณี
+  async function run(input, onProgress, ctl) {
+    const hold = { sep: null };
+    try { return await runCore(input, onProgress, ctl, hold); }
+    finally { if (hold.sep) { try { hold.sep.release(); } catch (e) { /* ignore */ } } }
   }
 
   window.Analyze = {

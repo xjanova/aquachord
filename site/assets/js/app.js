@@ -175,10 +175,13 @@
       .then((ok) => {
         if (!ok) return;
         const prefs = ls.get('aq.view.' + id, null), riffSaved = ls.get('aq.riff.' + id, null);
+        let tracksSaved = null;
+        if (window.TrackStore) TrackStore.get(id).then((v) => { tracksSaved = v; TrackStore.del(id); });
         Store.remove(id); ls.del('aq.view.' + id); ls.del('aq.riff.' + id);
         refreshShell();
         toast(t('library.deleted'), { action: { label: t('common.undo'), run: () => {
           storeSave(song); if (prefs) ls.set('aq.view.' + id, prefs); if (riffSaved) ls.set('aq.riff.' + id, riffSaved);
+          if (tracksSaved && window.TrackStore) TrackStore.put(id, tracksSaved);
           refreshShell(); route();
         } } });
         if (after) after();
@@ -254,6 +257,44 @@
     get on() { return ls.get('aq.riff.on', '1') === '1'; },
     set on(v) { ls.set('aq.riff.on', v ? '1' : '0'); },
   };
+  // แกะทุกเครื่องดนตรี (แทร็ก MIDI) — เปิดเอง (ใช้เวลาเพิ่ม) · GPU เปิดโหมด AI แยกเครื่องดนตรี + แกะคอร์ดจากดนตรีที่ไม่มีกลอง/เสียงร้อง
+  const tracksAvailable = () => !!(window.Stems && Stems.transcribe && window.TrackStore);
+  const tracksPref = {
+    get on() { return ls.get('aq.tracks.on', '0') === '1'; },
+    set on(v) { ls.set('aq.tracks.on', v ? '1' : '0'); },
+    get mode() { return ls.get('aq.tracks.mode', 'lite') === 'full' ? 'full' : 'lite'; },
+    set mode(v) { ls.set('aq.tracks.mode', v); },
+  };
+  function tracksBoxHTML() {
+    if (!tracksAvailable()) return '';
+    const on = tracksPref.on;
+    return `<div class="lyr-box ${on ? 'on' : ''}" id="tracksBox">
+      <label class="switch-row">
+        <span class="switch"><input type="checkbox" id="tracksOn" ${on ? 'checked' : ''} /><i></i></span>
+        <span class="switch-text">${ic('note')} ${t('tracks.enable')}</span><span class="chip chip-beta">Beta</span>
+      </label>
+      <div class="lyr-opts" id="tracksOpts" ${on ? '' : 'hidden'}>
+        <label class="mini-field"><span>${t('tracks.mode')}</span>
+          <select id="tracksMode">${opt('lite', t('tracks.mode.lite'), tracksPref.mode)}${opt('full', t('tracks.mode.full'), tracksPref.mode)}</select></label>
+        <p class="lyr-hint">${t('tracks.hint')}</p>
+      </div>
+    </div>`;
+  }
+  function wireTracksBox(root) {
+    const on = $('#tracksOn', root);
+    if (!on) return;
+    on.addEventListener('change', () => { tracksPref.on = on.checked; $('#tracksOpts', root).hidden = !on.checked; $('#tracksBox', root).classList.toggle('on', on.checked); });
+    const sel = $('#tracksMode', root);
+    sel.addEventListener('change', () => { tracksPref.mode = sel.value; });
+    // ไม่มี GPU → ปิดตัวเลือก AI
+    if (window.Stems && Stems.capabilities) Stems.capabilities().then((c) => {
+      const o = sel.querySelector('option[value="full"]');
+      if (!o) return;
+      o.disabled = !(c && c.fullOK);
+      o.textContent = t(c && c.fullOK ? 'tracks.mode.full' : 'tracks.mode.fullNo');
+      if (!(c && c.fullOK) && sel.value === 'full') { sel.value = 'lite'; tracksPref.mode = 'lite'; }
+    }).catch(() => {});
+  }
   function riffBoxHTML() {
     if (!riffAvailable()) return '';
     return `<label class="switch-row riff-row" id="riffBox">
@@ -413,6 +454,7 @@
             </div>
             ${lyricsBoxHTML()}
             ${riffBoxHTML()}
+            ${tracksBoxHTML()}
             <div class="spot-actions">
               <button class="button primary" type="button" id="startBtn">${ic('play')}${t('ingest.start')}</button>
               <a class="button secondary" href="#/edit/new">${ic('edit')}${t('home.writeOwn')}</a>
@@ -531,6 +573,7 @@
     $('#urlInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#startBtn').click(); });
     const riffOn = $('#riffOn');
     if (riffOn) riffOn.addEventListener('change', () => { riffPref.on = riffOn.checked; });
+    wireTracksBox(view);
 
     $('#startBtn').addEventListener('click', () => {
       // เปิด AudioContext ใน gesture แรก (iOS)
@@ -551,6 +594,7 @@
       }
       if (lyricsAvailable() && lyrPref.on) input.lyrics = { model: lyrPref.model, lang: lyrPref.lang };
       if (riffAvailable() && riffPref.on) input.riff = true;
+      if (tracksAvailable() && tracksPref.on) input.tracks = tracksPref.mode;
       ensureCopyrightAccepted(() => Job.start(input));
     });
   }
@@ -558,13 +602,19 @@
   /* =====================================================================
      JOB — วิเคราะห์จริงในเครื่อง (analyze.js) · วิ่งต่อได้แม้เปิดหน้าอื่น
      ===================================================================== */
+  // งานแกะแทร็กจบแล้วว่างนาน → ปิด worker คืนหน่วยความจำ/GPU (โมเดลแยกเครื่องดนตรี ~272 MB) · งานถัดไปโหลดจากแคชในเครื่อง
+  let stemsIdle = 0;
+  function releaseStemsLater() {
+    clearTimeout(stemsIdle);
+    stemsIdle = setTimeout(() => { if (!(Job.st && Job.st.running) && window.Stems && Stems.reset) Stems.reset(); }, 90000);
+  }
   const Job = {
     st: null,
     start(input) {
       if (this.st && this.st.running) { location.hash = '#/job'; return; }
       const ctl = { aborted: false };
       const st = this.st = {
-        running: true, input, ctl, stages: Analyze.stages(!!input.lyrics, !!input.riff), stage: 'ingest', percent: 0, detail: '',
+        running: true, input, ctl, stages: Analyze.stages(!!input.lyrics, !!input.riff, input.tracks || null), stage: 'ingest', percent: 0, detail: '',
         name: input.kind === 'file' ? input.file.name : input.url, doc: null,
       };
       FX.Orb.setBusy(true);
@@ -575,17 +625,32 @@
           FX.Orb.setBusy(false);
           // แท็บโซโล่/ริฟฟ์เก็บแยกจาก SongDoc (สัญญากลางห้ามเปลี่ยนโดยไม่บัมป์ schemaVersion)
           const riff = doc._riff, riffErr = doc._riffError;
-          delete doc._riff; delete doc._riffError;
+          const tracks = doc._tracks, tracksErr = doc._tracksError, tracksFallback = doc._tracksFallback;
+          delete doc._riff; delete doc._riffError; delete doc._tracks; delete doc._tracksError; delete doc._tracksFallback;
+          const saveTracks = (id) => {
+            if (!tracks || !Array.isArray(tracks.tracks) || !tracks.tracks.length || !window.TrackStore) return Promise.resolve(false);
+            return TrackStore.put(id, tracks);
+          };
+          const tracksMsg = () => (tracks && tracks.tracks && tracks.tracks.length ? (tracksFallback ? t('tracks.doneFallback') : t('tracks.done')) : t('tracks.err'));
           const saveRiff = (id) => {
             if (!riff || !Array.isArray(riff.notes) || !riff.notes.length) return false;
             try { localStorage.setItem('aq.riff.' + id, JSON.stringify(riff)); return true; } catch (e) { toast(t('err.storage'), { kind: 'warn' }); return false; }
           };
-          if (input.riffFor) {
-            // แกะแท็บให้เพลงที่มีอยู่แล้ว — ไม่สร้างเพลงใหม่
+          if (input.riffFor || input.tracksFor) {
+            // แกะแท็บ/แทร็กให้เพลงที่มีอยู่แล้ว — ไม่สร้างเพลงใหม่ (คอร์ดเดิมไม่เปลี่ยน)
+            const songId = input.riffFor || input.tracksFor;
             this.st = null; pickedFile = null;
-            const ok = saveRiff(input.riffFor);
-            const msg = ok ? t('tab.done') : (riffErr ? t('tab.err') : t('tab.noneFound'));
-            const target = '#/song/' + input.riffFor;
+            let ok, msg;
+            if (input.tracksFor) {
+              ok = !!(tracks && tracks.tracks && tracks.tracks.length);
+              saveTracks(songId);
+              if (input.riff) saveRiff(songId);
+              msg = tracksMsg();
+            } else {
+              ok = saveRiff(songId);
+              msg = ok ? t('tab.done') : (riffErr ? t('tab.err') : t('tab.noneFound'));
+            }
+            const target = '#/song/' + songId;
             this.paint();
             if (curRoute === 'job' || location.hash === target) {
               toast(msg, { kind: ok ? 'ok' : 'warn' });
@@ -598,6 +663,10 @@
           }
           if (!storeSave(doc)) { this.st = null; this.paint(); if (curRoute === 'job') location.hash = '#/'; return; }
           saveRiff(doc.id);
+          if (input.tracks) saveTracks(doc.id).then((saved) => {
+            if (!saved) toast(t('tracks.err'), { kind: 'warn' });
+            else if (tracksFallback) toast(t('tracks.doneFallback'), { kind: 'warn', ms: 6000 });
+          });
           pickedFile = null;
           st.doc = doc;
           const msg = doc.lyricsError ? (t('lyrics.err.' + doc.lyricsError) || t('lyrics.err.run'))
@@ -620,7 +689,8 @@
           toast(jobErrMsg(err), { kind: 'warn', ms: 6000 });
           this.paint();
           if (curRoute === 'job') location.hash = '#/';
-        });
+        })
+        .finally(() => { if (input.tracks) releaseStemsLater(); });
       location.hash = '#/job';
     },
     progress(st, p) {
@@ -635,7 +705,9 @@
         if (!ok || st !== this.st) return;
         st.ctl.aborted = true; this.st = null; FX.Orb.setBusy(false);
         this.paint();
-        location.hash = '#/';
+        // แกะแท็บ/แทร็กให้เพลงเดิม → กลับไปหน้าเพลงนั้น (ไม่ใช่หน้าแรก)
+        const back = st.input && (st.input.tracksFor || st.input.riffFor);
+        location.hash = back && Store.get(back) ? '#/song/' + back : '#/';
       });
     },
     paint() {
@@ -1017,6 +1089,7 @@
             <span class="switch"><input type="checkbox" id="playSolo" ${PLAY.solo ? 'checked' : ''} /><i></i></span>
             <span class="switch-text">${ic('spark')} ${t('play.solo')}</span>
           </label>
+          ${window.Practice && window.TracksUI ? `<button class="button secondary sm" type="button" data-act="practiceChords">${ic('mic')}${t('practice.chords')}</button>` : ''}
         </div>
         <div id="patView">${patternHTML(PLAY.style)}</div>
         <p class="panel-note">${t('play.hint')}</p>
@@ -1031,7 +1104,9 @@
         ${lyricsStatusHTML(song)}
         <div class="chordsheet" id="sheet"></div>
       </section>
-      <section class="panel tab-panel rise" id="tabPanel"></section>`;
+      <section class="panel tab-panel rise" id="tabPanel"></section>
+      <section class="panel tracks-panel rise" id="tracksPanel" ${window.TracksUI ? '' : 'hidden'}></section>
+      <section class="panel finger-panel rise" id="fingerPanel" ${window.TracksUI ? '' : 'hidden'}></section>`;
 
     const sheet = $('#sheet'), strip = $('#strip');
 
@@ -1132,6 +1207,7 @@
         if (Player.on) { Player.stop(); paintPlayer(); } else Player.start(song, mapChord, playOpts());
         return;
       }
+      else if (a === 'practiceChords') { if (Player.on) { Player.stop(); paintPlayer(); } TracksUI.practiceChords(song); return; }
       else if (a === 'bpm+' || a === 'bpm-') {
         st.bpm = Math.max(40, Math.min(220, st.bpm + (a === 'bpm+' ? 2 : -2)));
         $('#dvBpm').textContent = st.bpm; saveViewPrefs(song.id, st); restart();
@@ -1164,6 +1240,7 @@
 
     update();
     renderTabPanel(song);
+    if (window.TracksUI) TracksUI.mount(song, { tracksEl: $('#tracksPanel'), fingerEl: $('#fingerPanel') });
     FX.Orb.mount($('#orbStage'));
   }
 
@@ -1199,7 +1276,9 @@
     }
     return ((best % bar) + bar) % bar;
   }
-  function tabBarsHTML(notes, bpm, phase) {
+  function tabBarsHTML(notes, bpm, phase, o) {
+    o = o || {};
+    const names = o.names || STR_NAMES, ns = names.length;
     // มีกริดจังหวะ → ห้องละ 4 จังหวะเริ่มที่ phase จริงของเพลง · ไม่มีกริด → ช่วงละ 2.4 วิ (ไม่มีเลขห้อง)
     const grid = bpm > 0;
     const bar = grid ? (60 / bpm) * 4 : 2.4;
@@ -1215,13 +1294,13 @@
       if (prev != null && b - prev > 1) html += `<div class="tab-gap" aria-hidden="true">· ${b - prev - 1} ${t('tab.restBars')} ·</div>`;
       prev = b;
       const t0 = ph + b * bar;
-      html += `<div class="tab-bar" data-bar="${b}"><span class="tab-num">${grid ? b - firstBar + 1 : ''} <i>${fmtClock(Math.max(0, t0))}</i></span>
-        <span class="tab-strs" aria-hidden="true">${STR_NAMES.slice().reverse().map((x) => `<i>${x}</i>`).join('')}</span>
+      html += `<div class="tab-bar" data-bar="${b}" style="--strings:${ns}"><span class="tab-num">${grid ? b - firstBar + 1 : ''} <i>${fmtClock(Math.max(0, t0))}</i></span>
+        <span class="tab-strs" aria-hidden="true">${names.slice().reverse().map((x) => `<i>${x}</i>`).join('')}</span>
         ${groups.get(b).map((i) => {
           const n = notes[i];
-          const s = Math.max(0, Math.min(5, n.s | 0)), f = Math.max(0, n.f | 0);
+          const s = Math.max(0, Math.min(ns - 1, n.s | 0)), f = Math.max(0, n.f | 0);
           const x = 10 + Math.max(0, Math.min(1, ((+n.t || 0) - t0 + tol * 0.5) / bar)) * 86;
-          return `<button type="button" class="tab-note" data-i="${i}" style="left:${x.toFixed(2)}%;--row:${5 - s}" aria-label="${STR_NAMES[s]} ${f}">${f}</button>`;
+          return `<button type="button" class="tab-note${n.role ? ' r-' + n.role : ''}" data-i="${i}" style="left:${x.toFixed(2)}%;--row:${ns - 1 - s}" aria-label="${names[s]} ${f}">${f}</button>`;
         }).join('')}
       </div>`;
     });
@@ -1773,6 +1852,7 @@
       confirmDialog({ title: t('settings.clearQ'), body: tf('settings.clearDesc', { n: songs.length }), ok: t('settings.clear'), danger: true }).then((ok) => {
         if (!ok) return;
         Store.all().forEach((s) => { Store.remove(s.id); ls.del('aq.view.' + s.id); ls.del('aq.riff.' + s.id); });
+        if (window.TrackStore) TrackStore.clear();
         refreshShell(); renderSettings(); toast(t('settings.cleared'));
       });
     });
@@ -1823,6 +1903,7 @@
     stopAutoScroll();
     if (Player.on) Player.stop();
     Music.rhythm.stop(); TabPlay.stop();
+    if (window.TracksUI) TracksUI.teardown();
     paintPlayer();
     closeChordPop();
     FX.Orb.detach();
@@ -1959,6 +2040,12 @@
     t, tf, ic, esc, toast, modal, route: () => route(false),
     randomSong() { const all = Store.all(); if (!all.length) return false; location.hash = '#/song/' + all[Math.floor(Math.random() * all.length)].id; return true; },
     focusSearch, get route_() { return curRoute; },
+    // สำหรับ tracksui.js (แทร็กเครื่องดนตรี / ฟิงเกอร์สไตล์ / ฝึกผ่านไมค์)
+    ls, opt, confirmDialog, motionOn, tabBarsHTML, barPhase, songChords, fmtClock, hashOf,
+    pickFile: pickFileThen,
+    startJob(input) { try { Music.audioCtx(); } catch (e) {} ensureCopyrightAccepted(() => Job.start(input)); },
+    stopOtherAudio() { if (Player.on) { Player.stop(); paintPlayer(); } Music.rhythm.stop(); TabPlay.stop(); },
+    loadRiff, keepAwake,
   };
   window.addEventListener('hashchange', onHashChange);
   FX.Sky.init && FX.Sky.init($('#sky'), motionOn());

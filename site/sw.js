@@ -1,5 +1,5 @@
 /* AquaChord service worker — precache app shell, offline-first */
-const CACHE = 'aquachord-1.5.0';
+const CACHE = 'aquachord-1.6.0';
 const ASSETS = [
   './',
   './index.html',
@@ -16,9 +16,19 @@ const ASSETS = [
   './assets/js/store.js',
   './assets/js/dsp.js',
   './assets/js/riff.js',
+  './assets/js/finger.js',
+  './assets/js/practice.js',
   './assets/js/lyrics.js',
   './assets/js/lyrics-worker.js',
+  './assets/js/stems.js',
+  './assets/js/stems-worker.js',
+  './assets/js/tracks.js',
   './assets/js/analyze.js',
+  './assets/js/notation.js',
+  './assets/js/midi.js',
+  './assets/js/trackstore.js',
+  './assets/js/mixer.js',
+  './assets/js/tracksui.js',
   './assets/js/fx.js',
   './assets/js/guide.js',
   './assets/js/app.js',
@@ -33,7 +43,8 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+    // ลบเฉพาะแคชแอปเวอร์ชันเก่า — แคชโมเดล AI (aq-models-v1 / transformers-cache) ใหญ่หลายร้อย MB ต้องอยู่ข้ามการอัปเดต
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k.startsWith('aquachord-') && k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });

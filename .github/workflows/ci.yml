@@ -45,6 +45,16 @@ jobs:
         run: node tools/test-assemble.cjs
       - name: เทสต์แกะลายโซโล่/ริฟฟ์ → แท็บกีตาร์ (เสียงสังเคราะห์)
         run: node tools/test-riff.cjs
+      - name: เทสต์ฝึกกับไมค์ (pitch/คอร์ด/onset/ตัดสินจังหวะ — เสียงสังเคราะห์)
+        run: node --expose-gc tools/test-practice.cjs
+      - name: เทสต์เรียบเรียง fingerstyle (ทำนอง+เบส+คอร์ด → แท็บที่เล่นได้จริง)
+        run: node tools/test-finger.cjs
+      - name: เทสต์แกะไลน์หลายเครื่องดนตรี → แทร็กโน้ต (HPSS/กลอง/Basic Pitch oracle/Demucs stub/analyze hook)
+        run: node tools/test-tracks.cjs
+      - name: เทสต์เขียนไฟล์ MIDI (SMF type 1 จากแทร็กโน้ต)
+        run: node tools/test-midi.cjs
+      - name: เทสต์โน้ตเพลง (ทำนอง → ABC/โน้ตสากล/โน้ตไทย)
+        run: node tools/test-notation.cjs
       - name: ตรวจ JSON (manifest, version)
         run: |
           node -e "JSON.parse(require('fs').readFileSync('site/manifest.webmanifest','utf8'));console.log('manifest ok')"
