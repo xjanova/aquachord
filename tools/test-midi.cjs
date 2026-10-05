@@ -20,7 +20,7 @@ function parse(bytes) {
     if (str4() !== 'MTrk') throw new Error('no MTrk');
     const len = u32(), end = p + len;
     let t = 0, status = 0;
-    const tr = { name: '', notes: [], tempo: null, program: null, open: new Map() };
+    const tr = { name: '', notes: [], tempo: null, program: null, open: new Map(), markers: [] };
     while (p < end) {
       t += vlq();
       let b = bytes[p];
@@ -29,6 +29,7 @@ function parse(bytes) {
         const type = bytes[p++]; const l = vlq(); const data = bytes.slice(p, p + l); p += l;
         if (type === 0x03) tr.name = Buffer.from(data).toString('utf8');
         if (type === 0x51) tr.tempo = (data[0] << 16) | (data[1] << 8) | data[2];
+        if (type === 0x06) tr.markers.push({ t, text: Buffer.from(data).toString('utf8') });
       } else {
         const hi = status & 0xf0, ch = status & 15;
         if (hi === 0xc0) { tr.program = bytes[p++]; tr.ch = ch; }
@@ -72,6 +73,22 @@ const only = parse(Midi.fromTrackSet(ts, { include: ['drums'] }));
 ok(only.tracks.length === 2 && only.tracks[1].notes.length === 3, 'include filter exports only selected tracks');
 const one = parse(Midi.fromNotes([{ t: 0, d: 0.5, midi: 64 }], { bpm: 90, name: 'Fingerstyle' }));
 ok(one.tracks.length === 2 && one.tracks[1].program === 25 && one.tracks[1].name === 'Fingerstyle', 'fromNotes → steel guitar track');
+
+// ส่งออกสำหรับ FL Studio / DAW: จังหวะ 1 ของเพลง (0.5 วิ) ต้องตรงเส้นห้อง · โน้ตก่อนหน้าอยู่ในห้องนำ · ชื่อคอร์ดเป็น marker
+{
+  const bar = spb * 4; // 2.4 s ที่ 100 BPM
+  const daw = Midi.forDaw({ bpm, tracks: [{ id: 'Bass', kind: 'pitched', program: 33, notes: [{ t: 0.2, d: 0.2, midi: 40 }, { t: 0.5, d: 0.5, midi: 43 }] }] },
+    { downbeat: 0.5, title: 'x', markers: [{ t: 0.5, text: 'C' }, { t: 2.9, text: 'Am' }],
+      extra: [{ id: 'Chords', kind: 'pitched', program: 0, notes: [{ t: 0.5, d: 2.3, midi: 60 }, { t: 0.5, d: 2.3, midi: 64 }] }] });
+  const d = parse(daw.bytes);
+  ok(Math.abs(daw.shift - (bar - 0.5)) < 1e-9, 'DAW: เลื่อนให้จังหวะ 1 ตรงห้องที่ 2 (มีโน้ตนำก่อนจังหวะ 1) shift ' + daw.shift.toFixed(3));
+  const bn = d.tracks[1].notes.sort((a, b) => a.on - b.on);
+  ok(bn[1].on === 4 * 480 && bn[0].on === Math.round((bar - 0.3) / spb * 480), 'DAW: โน้ตจังหวะ 1 = tick ' + bn[1].on + ' (ต้นห้อง 2) · โน้ตนำ = ' + bn[0].on);
+  ok(d.tracks.length === 3 && d.tracks[2].name === 'Chords' && d.tracks[2].notes.length === 2 && d.tracks[2].notes.every((n) => n.on === 1920), 'DAW: แทร็กคอร์ดเพิ่มเติม ตรงจังหวะ 1');
+  ok(d.tracks[0].markers.map((m) => m.text + '@' + m.t).join() === 'C@1920,Am@' + Math.round((2.9 + daw.shift) / spb * 480), 'DAW: marker ชื่อคอร์ดตามเวลา ' + JSON.stringify(d.tracks[0].markers));
+  const noPick = Midi.forDaw({ bpm, tracks: [{ id: 'B', kind: 'pitched', notes: [{ t: 0.5, d: 0.5, midi: 40 }] }] }, { downbeat: 0.5 });
+  ok(Math.abs(noPick.shift + 0.5) < 1e-9 && parse(noPick.bytes).tracks[1].notes[0].on === 0, 'DAW: ไม่มีโน้ตนำ → จังหวะ 1 อยู่ต้นเพลงพอดี');
+}
 
 if (fails) { console.log(`\n✗ test-midi ล้มเหลว ${fails} ข้อ`); process.exit(1); }
 console.log('\n✓ test-midi ผ่านทุกข้อ');

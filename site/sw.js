@@ -1,5 +1,5 @@
 /* AquaChord service worker — precache app shell, offline-first */
-const CACHE = 'aquachord-1.7.0';
+const CACHE = 'aquachord-1.8.0';
 const ASSETS = [
   './',
   './index.html',
@@ -28,6 +28,7 @@ const ASSETS = [
   './assets/js/notation.js',
   './assets/js/midi.js',
   './assets/js/trackstore.js',
+  './assets/js/polish.js',
   './assets/js/mixer.js',
   './assets/js/tracksui.js',
   './assets/js/fx.js',

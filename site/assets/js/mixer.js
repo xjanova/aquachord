@@ -1,10 +1,12 @@
 /* mixer.js — เล่นแทร็กเครื่องดนตรีที่แกะได้ (TrackSet) พร้อมกันทั้งวง แบบ MIDI player
    เลือกเปิด/ปิด (mute) · เดี่ยว (solo) · ความดังรายแทร็ก · ความเร็ว ×0.5–1.25 · เลื่อนตำแหน่ง
-   จัดคิวด้วยนาฬิกา Web Audio (มองล่วงหน้า 0.35 วิ) · เสียงจาก music.js (กลองสังเคราะห์/เบส/กีตาร์/เปียโน/ลีด/เสียงร้อง) */
+   จัดคิวด้วยนาฬิกา Web Audio (มองล่วงหน้า 0.35 วิ) · เสียงจาก music.js (กลองสังเคราะห์/เบส/กีตาร์/เปียโน/ลีด/เสียงร้อง)
+   เล่นได้ทีละตัวทั้งแอป (Music.transport): play() หยุดตัวเล่นอื่นก่อน · ตัวอื่นเริ่มเล่น → ตัวนี้ pause เอง + แจ้ง onState
+   opts: { id, label } ชื่อตัวเล่นสำหรับแถบควบคุม · โน้ตมี tech ได้ (เช่น { bright: true }) ส่งต่อให้ Music.noteAt */
 (function () {
   // เสียงที่ใช้เล่นแต่ละแทร็ก
-  const VOICE = { drums: 'drum', bass: 'bass', guitar: 'guitar', piano: 'piano', harmony: 'piano', melody: 'lead', vocals: 'voice', other: 'lead', fingerstyle: 'guitar' };
-  const GAIN = { drums: 0.9, bass: 0.95, guitar: 0.8, piano: 0.75, harmony: 0.55, melody: 0.7, vocals: 0.75, other: 0.5, fingerstyle: 0.9 };
+  const VOICE = { drums: 'drum', bass: 'bass', guitar: 'guitar', piano: 'piano', harmony: 'piano', melody: 'lead', vocals: 'voice', other: 'lead', fingerstyle: 'guitar', riff: 'guitar' };
+  const GAIN = { drums: 0.9, bass: 0.95, guitar: 0.8, piano: 0.75, harmony: 0.55, melody: 0.7, vocals: 0.75, other: 0.5, fingerstyle: 0.9, riff: 0.9 };
 
   function create(trackSet, opts) {
     opts = opts || {};
@@ -19,7 +21,10 @@
     events.sort((a, b) => a.n.t - b.n.t);
 
     let bus = null, gains = {}, playing = false, t0 = 0, from = 0, tempo = 1, idx = 0, timer = 0, gen = 0;
-    const listeners = { time: [], end: [] };
+    const listeners = { time: [], end: [], state: [] };
+    const TP = Music.transport;
+    const owner = { id: opts.id || 'mixer', label: opts.label || '', stop() { api.pause(); } };
+    const emitState = () => listeners.state.forEach((fn) => { try { fn(playing); } catch (e) { /* */ } });
 
     function audible(id) {
       const anySolo = Object.keys(state).some((k) => state[k].solo);
@@ -34,7 +39,7 @@
     }
     function build() {
       bus = c.createGain(); bus.gain.value = 1;
-      bus.connect(Music.output());
+      bus.connect(Music.output()); // บัสของตัวเล่นนี้: หยุด = ลดเป็น 0 ตัดเสียงที่จองคิวไว้แล้วด้วย
       gains = {};
       tracks.forEach((t) => { const g = c.createGain(); g.connect(bus); gains[t.id] = g; });
       applyGains();
@@ -54,7 +59,7 @@
         const tr = tracks.find((x) => x.id === e.tr);
         const voice = VOICE[e.tr] || (tr && tr.kind === 'drums' ? 'drum' : 'piano');
         const vel = Math.max(0.15, Math.min(1, +e.n.vel || 0.8));
-        Music.noteAt(e.n.midi, Math.max(at, c.currentTime), Math.max(0.05, (+e.n.d || 0.25) / tempo), (voice === 'drum' ? 1 : 0.34) * vel, { voice, dest: gains[e.tr] });
+        Music.noteAt(e.n.midi, Math.max(at, c.currentTime), Math.max(0.05, (+e.n.d || 0.25) / tempo), (voice === 'drum' ? 1 : 0.34) * vel, Object.assign({}, e.n.tech, { voice, dest: gains[e.tr] }));
       }
       if (idx >= events.length && now() >= duration - 0.01) { stopInternal(true); return; }
       timer = setTimeout(() => pump(g), 60);
@@ -72,8 +77,10 @@
         const old = bus; setTimeout(() => { try { old.disconnect(); } catch (e) {} }, 400);
         bus = null;
       }
+      if (TP) TP.release(owner);
       if (ended) { from = 0; listeners.end.forEach((fn) => { try { fn(); } catch (e) {} }); }
       listeners.time.forEach((fn) => { try { fn(from); } catch (e) {} });
+      emitState();
     }
 
     const api = {
@@ -85,8 +92,10 @@
         if (playing) stopInternal(false);
         if (at != null) from = Math.max(0, Math.min(duration, at));
         if (from >= duration - 0.05) from = 0;
+        if (TP) TP.claim(owner); // หยุดตัวเล่นอื่นก่อนเสมอ
         build();
         playing = true; gen++;
+        emitState();
         t0 = ctxStart != null && ctxStart > c.currentTime + 0.01 ? ctxStart : c.currentTime + 0.08;
         idx = 0; while (idx < events.length && events[idx].n.t < from - 0.02) idx++;
         pump(gen); emitTime();
@@ -101,7 +110,8 @@
       state(id) { return Object.assign({ audible: audible(id) }, state[id]); },
       onTime(fn) { listeners.time.push(fn); },
       onEnd(fn) { listeners.end.push(fn); },
-      destroy() { stopInternal(false); listeners.time = []; listeners.end = []; },
+      onState(fn) { listeners.state.push(fn); }, // fn(playing) ทุกครั้งที่เริ่ม/หยุด (รวมถูกตัวเล่นอื่นแทรก)
+      destroy() { if (playing) stopInternal(false); else if (TP) TP.release(owner); listeners.time = []; listeners.end = []; listeners.state = []; },
     };
     return api;
   }

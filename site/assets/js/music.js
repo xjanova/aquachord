@@ -104,6 +104,33 @@
     return bus;
   }
 
+  /* ---------- เล่นได้ทีละอย่าง (transport) ----------
+     ตัวเล่นทุกตัว (เล่นตามเพลง · ห้องคอร์ด · แท็บโซโล่ · มิกเซอร์แทร็ก · ฟิงเกอร์สไตล์) ขอสิทธิ์ด้วย claim(owner)
+     → ตัวที่เล่นอยู่ถูกหยุดก่อนเสมอ (owner.stop() ของมันอัปเดตปุ่มของมันเอง)
+     ทุกตัวส่งเสียงผ่านบัสของตัวเอง (bus()) → หยุด = cut(บัส) เงียบทันที รวมโน้ตที่จองคิวล่วงหน้าไว้แล้ว
+     และเสียงที่ยังกังวานอยู่ (เดิมกดหยุดแล้วยังได้ยินต่อ 0.25–2 วินาที · แท็บโซโล่จองทั้งริฟฟ์ไว้ล่วงหน้าเลยเล่นจนจบ)
+     owner: { id, label, stop() } · subscribe(fn) รับแจ้งทุกครั้งที่ตัวเล่นปัจจุบันเปลี่ยน (แถบควบคุมลอย) */
+  const TP = { cur: null, subs: new Set() };
+  function tpNotify() { TP.subs.forEach((fn) => { try { fn(TP.cur); } catch (e) { /* UI พังไม่ลามไปตัวเล่น */ } }); }
+  function tpClaim(owner) {
+    if (TP.cur && TP.cur !== owner) { const old = TP.cur; TP.cur = null; try { old.stop(); } catch (e) { /* ตัวเก่าพัง ไม่ขวางตัวใหม่ */ } }
+    TP.cur = owner; tpNotify();
+  }
+  function tpRelease(owner) { if (TP.cur && TP.cur === owner) { TP.cur = null; tpNotify(); } }
+  function tpStopAll() { const old = TP.cur; TP.cur = null; if (old) { try { old.stop(); } catch (e) { /* */ } } tpNotify(); }
+  function tpBus() { const c = audioCtx(), g = c.createGain(); g.connect(output()); return g; }
+  function tpCut(g) {
+    if (!g) return;
+    const c = audioCtx(), t = c.currentTime;
+    try { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + 0.03); } catch (e) { /* */ }
+    setTimeout(() => { try { g.disconnect(); } catch (e) { /* */ } }, 150);
+  }
+  const transport = {
+    claim: tpClaim, release: tpRelease, stopAll: tpStopAll, bus: tpBus, cut: tpCut,
+    current() { return TP.cur; },
+    subscribe(fn) { TP.subs.add(fn); return () => TP.subs.delete(fn); },
+  };
+
   /* ---------- เครื่องดนตรี: กีตาร์ (Karplus-Strong) / เปียโน (additive synth) ---------- */
   let instrument = 'guitar';
   function setInstrument(i) { instrument = i === 'piano' ? 'piano' : 'guitar'; }
@@ -275,6 +302,7 @@
     src.connect(lp).connect(g).connect(o.dest || output());
     src.start(t0); src.stop(t0 + dur + 0.02);
   }
+  function noteAtRaw(midi, t0, dur, vol, o) { noteAt(midi, t0, dur, vol, o); }
   // เวลาแบบสัมพัทธ์ (วินาทีจากตอนนี้)
   function note(midi, when, dur, vol, o) { noteAt(midi, audioCtx().currentTime + (when || 0), dur, vol == null ? 0.3 : vol, o); }
   // ชื่อเดิม (กีตาร์เสมอ) — คงไว้ให้โค้ดเก่า
@@ -286,6 +314,7 @@
     const gap = piano ? 0.006 : (gapMs == null ? 32 : gapMs) / 1000;
     midis.forEach((m, i) => noteAt(m, t + i * gap, piano ? 1.8 : 1.9, piano ? 0.24 : 0.28));
   }
+  // (แตะคอร์ดเดี่ยว ๆ ไม่ใช่ "ตัวเล่น" — เสียงสั้น เล่นซ้อนเพลงที่กำลังเล่นได้ ไม่ต้อง claim)
   function playChord(sym) { strum(chordVoicing(sym)); }
 
   /* ---------- Chord diagrams ---------- */
@@ -492,13 +521,14 @@
     return out;
   }
 
-  // เล่นหนึ่งช่องจังหวะของคอร์ด v (โน้ตเรียงต่ำ→สูง)
-  function playStep(tok, v, at, step, accent, pm) {
+  // เล่นหนึ่งช่องจังหวะของคอร์ด v (โน้ตเรียงต่ำ→สูง) ออกบัส dest ของตัวเล่น
+  function playStep(tok, v, at, step, accent, pm, dest) {
     if (!v.length || tok === '.') return;
     const piano = instrument === 'piano';
     const n = v.length, hi = v.slice(Math.max(1, n - 4));
     const ring = Math.min(2.2, step * (piano ? 2.2 : 3));
     const acc = accent ? 1.15 : 1;
+    const noteAt = (m, t, d, vol, o) => noteAtRaw(m, t, d, vol, Object.assign({ dest }, o));
     if (piano) {
       const up = v.slice(1);
       if (tok === 'D') { noteAt(v[0], at, ring * 1.4, 0.24 * acc); up.forEach((m) => noteAt(m, at + 0.004, ring, 0.17 * acc)); }
@@ -579,13 +609,19 @@
   }
 
   /* ตัวเล่นจังหวะ: จัดคิวด้วยนาฬิกาของ Web Audio (แม่นกว่า setTimeout) มองล่วงหน้า 0.25 วินาที
-     o: { seq:[{t, chord, label}], end, bpm, pattern, solo, key, seed, repeat, onChord(i), onStep(k), onEnd() } */
-  const R = { on: false, gen: 0, timer: 0 };
-  function rhythmStop() { R.on = false; R.gen++; clearTimeout(R.timer); }
+     o: { seq:[{t, chord, label}], end, bpm, pattern, solo, key, seed, repeat, id, label,
+          onChord(i), onStep(k), onEnd() (เล่นจบเอง), onStop() (ถูกตัวเล่นอื่นแทรก) } */
+  const R = { on: false, gen: 0, timer: 0, bus: null, owner: null };
+  function rhythmStop() {
+    R.on = false; R.gen++; clearTimeout(R.timer);
+    tpCut(R.bus); R.bus = null;
+    const ow = R.owner; R.owner = null; tpRelease(ow);
+  }
   function rhythmPlay(o) {
     rhythmStop();
     const gen = R.gen;
     const c = audioCtx();
+    const owner = { id: o.id || 'rhythm', label: o.label || '', stop() { if (R.owner === owner) rhythmStop(); if (o.onStop) o.onStop(); } };
     const pat = PATTERNS.find((p) => p.id === o.pattern) || PATTERNS[1];
     const bpm = Math.max(40, Math.min(220, +o.bpm || 90));
     const beat = 60 / bpm, meter = pat.meter || 4;
@@ -614,6 +650,9 @@
       }
     }
     events.sort((a, b) => a.t - b.t);
+    tpClaim(owner);
+    R.owner = owner;
+    const dest = R.bus = tpBus();
     const t0 = c.currentTime + 0.12;
     let idx = 0, lastI = -1;
     R.on = true;
@@ -625,18 +664,25 @@
         const ev = events[idx++], at = t0 + ev.t;
         if (ev.kind === 'lead') {
           const n = ev.n;
-          noteAt(n.midi, at, n.d + 0.25, instrument === 'piano' ? 0.2 : 0.3, Object.assign({ guitar: false }, n.tech));
+          noteAt(n.midi, at, n.d + 0.25, instrument === 'piano' ? 0.2 : 0.3, Object.assign({ guitar: false, dest }, n.tech));
           continue;
         }
         const v = voiceOf(ev.i);
-        if (ev.kind === 'chord') v.forEach((m, j) => noteAt(m, at + j * (instrument === 'piano' ? 0.005 : 0.03), ev.d, instrument === 'piano' ? 0.22 : 0.27));
-        else playStep(ev.tok, v, at, ev.step, ev.accent, pat.pm);
+        if (ev.kind === 'chord') v.forEach((m, j) => noteAt(m, at + j * (instrument === 'piano' ? 0.005 : 0.03), ev.d, instrument === 'piano' ? 0.22 : 0.27, { dest }));
+        else playStep(ev.tok, v, at, ev.step, ev.accent, pat.pm, dest);
         if (ev.i !== lastI) { lastI = ev.i; const i = ev.i; if (o.onChord) ui(() => o.onChord(i), at); }
         if (ev.kind === 'step' && o.onStep) { const k = ev.k; ui(() => o.onStep(k), at); }
       }
       if (idx >= events.length) {
         const endAt = t0 + (events.length ? events[events.length - 1].t : 0) + 1.2;
-        R.timer = setTimeout(() => { if (R.gen === gen) { R.on = false; if (o.onEnd) o.onEnd(); } }, Math.max(0, (endAt - c.currentTime) * 1000));
+        R.timer = setTimeout(() => {
+          if (R.gen !== gen) return;
+          // จบเอง: เสียงหางหมดแล้ว — คืนสิทธิ์ (ไม่ต้องตัดเสียง)
+          R.on = false; const b = R.bus; R.bus = null; R.owner = null;
+          setTimeout(() => { try { b.disconnect(); } catch (e) { /* */ } }, 1500);
+          tpRelease(owner);
+          if (o.onEnd) o.onEnd();
+        }, Math.max(0, (endAt - c.currentTime) * 1000));
         return;
       }
       R.timer = setTimeout(pump, 45);
@@ -687,6 +733,7 @@
     pluck, note, noteAt, drumAt, strum, playChord, output,
     setInstrument, getInstrument,
     rhythm: { play: rhythmPlay, stop: rhythmStop, get on() { return R.on; }, countLabels },
+    transport,
     diagram, diagramSVG, pianoSVG, shapeFor, audioCtx,
   };
 })();

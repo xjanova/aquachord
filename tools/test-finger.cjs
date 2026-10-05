@@ -398,6 +398,43 @@ console.log('\n=== ความเร็ว (เพลง 4 นาที) ===');
   if (mx > 200) problems.push(`ความเร็ว: เพลง 4 นาทีใช้ ${mx.toFixed(1)} ms > 200 ms`);
 }
 
+/* ---------------- 3b) เสียงจริงตอนเล่น: ringOut ----------------
+   ค่า d ของ arrange = ค่าโน้ต → เล่นตรง ๆ ฟังขาด ๆ (สายถูกตัดก่อนดีดสายเดิมซ้ำ)
+   ringOut ต้องให้ทุกโน้ตกังวานถึงโน้ตถัดไปบนสายเดียวกัน (≥ 95% ของช่องว่าง ภายใต้เพดาน) โดยไม่ล้ำโน้ตถัดไป
+   และไม่สั้นกว่า d เดิม / ไม่แตะ t, s, f, midi */
+console.log('\n=== เสียงกังวานตอนเล่น (ringOut) ===');
+{
+  const MAX = 2.4, GAP = 0.015;
+  let held0 = 0, held1 = 0, pairs = 0, bad = 0;
+  for (const key of Object.keys(results)) {
+    const r = results[key];
+    const rung = Finger.ringOut(r.notes, { maxRing: MAX, gap: GAP });
+    if (rung.length !== r.notes.length) { problems.push(`ringOut ${key}: จำนวนโน้ตเปลี่ยน`); continue; }
+    rung.forEach((n, i) => {
+      const o = r.notes[i];
+      if (n.t !== o.t || n.s !== o.s || n.f !== o.f || n.midi !== o.midi) bad++;
+      if (n.d + 1e-9 < o.d) bad++;
+      if (n.d > Math.max(o.d, MAX) + 1e-9) bad++;
+    });
+    for (let s = 0; s < 6; s++) {
+      const a = r.notes.map((n, i) => ({ n, i })).filter((x) => x.n.s === s).sort((x, y) => x.n.t - y.n.t);
+      a.forEach((x, j) => {
+        const nx = a[j + 1]; if (!nx) return;
+        const room = Math.min(MAX, nx.n.t - x.n.t - GAP); if (room <= 0.02) return;
+        pairs++;
+        held0 += Math.min(1, x.n.d / room);
+        const d1 = rung[x.i].d;
+        held1 += Math.min(1, d1 / room);
+        if (x.n.t + d1 > nx.n.t - GAP + 1e-6 && d1 > x.n.d + 1e-9) bad++; // ยืดจนล้ำโน้ตถัดไปบนสายเดียวกัน
+      });
+    }
+  }
+  const h0 = held0 / Math.max(1, pairs), h1 = held1 / Math.max(1, pairs);
+  console.log(`โน้ตต่อเนื่องบนสายเดียวกัน ${pairs} คู่ · ดังเต็มช่องเฉลี่ย: เดิม ${(h0 * 100).toFixed(0)}% → ringOut ${(h1 * 100).toFixed(0)}% · ผิดกติกา ${bad}`);
+  if (bad) problems.push(`ringOut: ผิดกติกา ${bad} จุด (เวลา/สาย/เฟรตเปลี่ยน, สั้นลง, เกินเพดาน หรือล้ำโน้ตถัดไป)`);
+  if (h1 < 0.95) problems.push(`ringOut: โน้ตดังเต็มช่องแค่ ${(h1 * 100).toFixed(0)}% (< 95%)`);
+}
+
 /* ---------------- 4) ตัวอย่างแท็บ ---------------- */
 console.log('\n=== ตัวอย่างแท็บ: ' + FOLK.name + ' · travis · ปกติ (2 แถวแรก) ===');
 {

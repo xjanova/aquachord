@@ -55,6 +55,8 @@ jobs:
         run: node tools/test-lyricfix.cjs
       - name: เทสต์ตัวกันลูปของ Whisper (token จริง — เนื้อร้องจริงต้องผ่านครบ ลูปต้องจบเร็ว)
         run: node tools/test-lyrics-guard.cjs
+      - name: เทสต์เกลาโน้ตตามหลักดนตรี (กติกาทีละข้อ + โน้ตจากโมเดลจริงเทียบโน้ตจริง)
+        run: node tools/test-polish.cjs
       - name: เทสต์เขียนไฟล์ MIDI (SMF type 1 จากแทร็กโน้ต)
         run: node tools/test-midi.cjs
       - name: เทสต์โน้ตเพลง (ทำนอง → ABC/โน้ตสากล/โน้ตไทย)

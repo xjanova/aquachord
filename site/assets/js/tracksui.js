@@ -49,7 +49,10 @@
       'finger.level': 'ระดับ',
       'finger.easy': 'ง่าย', 'finger.normal': 'ปกติ',
       'finger.make': 'สร้างแท็บฟิงเกอร์สไตล์',
-      'finger.play': 'เล่น', 'finger.capo': 'คาโป้ {n}', 'finger.noCapo': 'ไม่ใช้คาโป้',
+      'finger.play': 'เล่น', 'finger.makePlay': 'เรียบเรียงแล้วเล่น', 'tracks.playAll': 'เล่นทุกแทร็ก',
+      'polish.on': 'เกลาโน้ตด้วย AI', 'polish.hint': 'รวมเสียงที่ขาดเป็นท่อน · แก้ทำนองหลุดออกเทฟ · ให้เสียงในคอร์ดเข้าพร้อมกัน · ลากเสียงให้พอ · เติมคอร์ดที่ถอดตกหล่น (เส้นประ = เติมโดย AI) — ปิดเพื่อดูโน้ตที่ถอดได้ตรง ๆ',
+      'polish.stats': 'แก้ไป {n} จุด', 'polish.filled': 'เติม {n} โน้ต',
+      'daw.fl': 'FL Studio', 'daw.flTitle': 'ส่งออกไป FL Studio (ทุกแทร็ก + คอร์ด ตรงห้อง)', 'daw.done': 'ไฟล์สำหรับ FL Studio พร้อมแล้ว — ลากไฟล์ลงหน้าต่าง FL Studio (หรือ File › Import › MIDI file) ได้ช่องแยกทุกเครื่อง ตรงห้อง + แทร็กคอร์ด', 'finger.capo': 'คาโป้ {n}', 'finger.noCapo': 'ไม่ใช้คาโป้',
       'finger.w.melody-octave': 'ย้ายทำนองทั้งเพลง {n} ออกเทฟให้อยู่ช่วงที่เล่นสบาย', 'finger.w.phrase-octave': 'ย้ายออกเทฟ {n} วลีเพื่อให้เล่นได้',
       'finger.w.note-octave': 'โน้ต {n} ตัวอยู่นอกช่วงกีตาร์ — ย้ายออกเทฟเฉพาะตัว', 'finger.w.repaired': 'ตัดโน้ตประกอบ {n} ตัวเพื่อให้เล่นได้จริง',
       'finger.w.unplayable': 'ยังมี {n} จุดที่อาจเล่นยาก', 'finger.w.easy-high-position': 'บางช่วงต้องขึ้นไปตำแหน่งเฟรต {n}',
@@ -121,7 +124,10 @@
       'finger.level': 'Level',
       'finger.easy': 'Easy', 'finger.normal': 'Normal',
       'finger.make': 'Make fingerstyle tab',
-      'finger.play': 'Play', 'finger.capo': 'Capo {n}', 'finger.noCapo': 'No capo',
+      'finger.play': 'Play', 'finger.makePlay': 'Arrange & play', 'tracks.playAll': 'Play all tracks',
+      'polish.on': 'AI note cleanup', 'polish.hint': 'Joins notes that were chopped up · fixes melody octave slips · lines chord tones up with the chord · lets notes sustain · fills chords the transcription missed (dashed = added by AI) — turn off to see the raw transcription',
+      'polish.stats': '{n} fixes', 'polish.filled': '{n} notes added',
+      'daw.fl': 'FL Studio', 'daw.flTitle': 'Export for FL Studio (all tracks + chords, bar-aligned)', 'daw.done': 'FL Studio file ready — drag it into FL Studio (or File › Import › MIDI file): one channel per instrument, on the bar grid, plus a chord track', 'finger.capo': 'Capo {n}', 'finger.noCapo': 'No capo',
       'finger.w.melody-octave': 'Whole melody moved {n} octave(s) into a comfortable range', 'finger.w.phrase-octave': '{n} phrase(s) moved an octave to stay playable',
       'finger.w.note-octave': '{n} note(s) outside guitar range moved an octave', 'finger.w.repaired': 'Dropped {n} fill note(s) to keep it playable',
       'finger.w.unplayable': '{n} spot(s) may still be hard to play', 'finger.w.easy-high-position': 'Some passages go up to fret {n}',
@@ -202,7 +208,6 @@
     const bar = (60 / (parseFloat(song.tempo) || 90)) * 4;
     return A().songChords(song.chordpro).map((c, i) => ({ t: i * bar, chord: c }));
   }
-  function stopMixer() { if (cur && cur.mixer) { cur.mixer.pause(); } }
 
   /* =====================================================================
      แทร็กเครื่องดนตรี
@@ -263,7 +268,13 @@
         $('#trFromFile', el).addEventListener('click', () => startFromFile(chosenMode(el)));
         return;
       }
+      // เกลาโน้ตตามหลักดนตรี (polish.js) — ค่าเริ่มต้นเปิด · ของที่เก็บไว้คือผลถอดดิบ (ปิดสวิตช์เพื่อดู/ส่งออกของดิบ)
+      const polishOn = !!window.Polish && A().ls.get('aq.tracks.polish', '1') === '1';
+      cur.rawTs = ts;
+      if (polishOn) { try { ts = Polish.polish(ts, { chords: song.timeline || [] }); } catch (e) { ts = cur.rawTs; } }
       cur.ts = ts;
+      const pst = ts._polish || null;
+      const fixes = pst ? pst.merged + pst.octave + pst.aligned + pst.extended + pst.dropped : 0;
       const g = gridOf(ts, song);
       cur.grid = g;
       // แทร็กโหลดเสร็จหลังแผงฟิงเกอร์สไตล์วาดแล้ว → วาดใหม่ให้ใช้ทำนอง/เบสจากแทร็ก (ถ้ายังไม่ได้เรียบเรียง)
@@ -272,9 +283,15 @@
       el.innerHTML = `${head(` <span class="chip">${t(ts.source === 'full' ? 'tracks.source.full' : 'tracks.source.lite')}</span>`)}
           <div class="tab-actions">
             <button class="button secondary sm" type="button" id="trMidi">${ic('download')}${t('tracks.midi')}</button>
+            <button class="button secondary sm" type="button" id="trFl" title="${esc(t('daw.flTitle'))}">${ic('download')}${t('daw.fl')}</button>
             <button class="icon-btn" type="button" id="trRedo" title="${esc(t('tracks.redo'))}" aria-label="${esc(t('tracks.redo'))}">${ic('reset')}</button>
           </div>
         </div>
+        ${window.Polish ? `<div class="polish-row">
+          <label class="switch-row"><span class="switch"><input type="checkbox" id="trPolish" ${polishOn ? 'checked' : ''} /><i></i></span><span class="switch-text">${ic('spark')} ${t('polish.on')}</span></label>
+          ${polishOn && pst ? `<span class="chip">${esc(tf('polish.stats', { n: fixes }))}</span>${pst.filled ? `<span class="chip">${esc(tf('polish.filled', { n: pst.filled }))}</span>` : ''}` : ''}
+          <p class="panel-note">${t('polish.hint')}</p>
+        </div>` : ''}
         <div class="transport">
           <button class="button primary sm" type="button" id="trPlay">${ic('play')}${t('finger.play')}</button>
           <button class="icon-btn" type="button" id="trStop" aria-label="stop">${ic('stop')}</button>
@@ -299,17 +316,18 @@
         <div class="track-view" id="trView"></div>
         <p class="panel-note">${t('tracks.note')}</p>`;
 
-      const mixer = cur.mixer = Mixer.create({ tracks });
+      const mixer = cur.mixer = Mixer.create({ tracks }, { id: 'tracks', label: t('song.tab.tracks') });
       mixer.setTempo(parseFloat(A().ls.get('aq.tracks.speed', '1')) || 1);
       const playBtn = $('#trPlay', el), pos = $('#trPos', el), timeEl = $('#trTime', el);
       const paintBtn = () => { playBtn.innerHTML = mixer.playing ? `${ic('stop')}${t('song.stop')}` : `${ic('play')}${t('finger.play')}`; };
-      playBtn.addEventListener('click', () => {
-        if (mixer.playing) { mixer.pause(); A().keepAwake(false); }
-        else { A().stopOtherAudio(); mixer.play(); A().keepAwake(true); }
-        paintBtn();
-      });
-      $('#trStop', el).addEventListener('click', () => { mixer.stop(); paintBtn(); A().keepAwake(false); });
-      mixer.onEnd(() => { paintBtn(); A().keepAwake(false); });
+      // ตัวเล่นอื่นเริ่มเล่น → มิกเซอร์นี้ถูกหยุดเอง (Music.transport) → ปุ่มต้องกลับเป็น "เล่น"
+      mixer.onState((on) => { paintBtn(); A().keepAwake(on); });
+      playBtn.addEventListener('click', () => { if (mixer.playing) mixer.pause(); else mixer.play(); });
+      if (A().registerPlayer) A().registerPlayer('tracks', { label: () => t('tracks.playAll'), play: () => playBtn.click() });
+      $('#trStop', el).addEventListener('click', () => mixer.stop());
+      $('#trFl', el).addEventListener('click', () => exportForDaw(tracks));
+      const pol = $('#trPolish', el);
+      if (pol) pol.addEventListener('change', () => { A().ls.set('aq.tracks.polish', pol.checked ? '1' : '0'); mixer.destroy(); cur.mixer = null; renderTracks(); });
       mixer.onTime((tm) => {
         timeEl.textContent = A().fmtClock(tm) + ' / ' + A().fmtClock(mixer.duration);
         if (!cur.drag) pos.value = Math.round((tm / Math.max(0.01, mixer.duration)) * 1000);
@@ -352,6 +370,36 @@
       timeEl.textContent = '0:00 / ' + A().fmtClock(mixer.duration);
       renderFinger();
     });
+  }
+
+  /* ---------------- ส่งออกไป FL Studio / DAW ----------------
+     ไฟล์ .flp ของ FL Studio เป็นรูปแบบปิดที่ไม่มีเอกสาร — ส่งออกเป็น MIDI หลายแทร็กที่ FL เปิดเป็นโปรเจกต์ได้ทันที:
+     ทุกแทร็ก (หลังเกลาโน้ต) + ฟิงเกอร์สไตล์ (เสียงกังวานจริง) + แท็บโซโล่ + แทร็กคอร์ด · marker ชื่อคอร์ด
+     จังหวะ 1 ของเพลงตรงเส้นห้องของ FL (Midi.forDaw) · ชื่อช่องอังกฤษ (FL แสดงภาษาไทยเพี้ยนได้) */
+  const DAW_NAMES = { drums: 'Drums', bass: 'Bass', guitar: 'Guitar', piano: 'Piano', harmony: 'Harmony', melody: 'Melody', vocals: 'Vocal melody', other: 'Synth / Strings' };
+  function exportForDaw(tracks) {
+    const t = A().t, song = cur.song, g = cur.grid && cur.grid.bpm ? cur.grid : { bpm: +cur.ts.bpm || parseFloat(song.tempo) || 120, phase: 0 };
+    const extra = [];
+    if (cur.fingerNotes && cur.fingerNotes.length) {
+      const rung = window.Finger && Finger.ringOut ? Finger.ringOut(cur.fingerNotes) : cur.fingerNotes;
+      extra.push({ id: 'Fingerstyle Guitar', kind: 'pitched', program: 25, notes: rung.map((n) => ({ t: n.t, d: n.d, midi: n.midi, vel: n.role === 'melody' ? 0.95 : 0.7 })) });
+    }
+    const riff = A().loadRiff(song.id);
+    if (riff && riff.notes && riff.notes.length) {
+      const tun = Array.isArray(riff.tuning) && riff.tuning.length === 6 ? riff.tuning : GUITAR.tuning;
+      extra.push({ id: 'Solo Guitar', kind: 'pitched', program: 27, notes: riff.notes.map((n) => ({ t: +n.t || 0, d: Math.max(0.05, +n.d || 0.3), midi: n.s != null && n.f != null ? tun[n.s | 0] + (n.f | 0) : +n.midi, vel: 0.85 })).filter((n) => n.midi > 0) });
+    }
+    const ch = chordTimeline(song), end = (cur.ts.duration || 0) || (ch.length ? ch[ch.length - 1].t + (60 / g.bpm) * 4 : 0);
+    const chordNotes = [];
+    ch.forEach((c, i) => {
+      const d = Math.max(0.1, (i + 1 < ch.length ? ch[i + 1].t : end) - c.t - 0.02);
+      Music.chordToMidis(c.chord).forEach((m) => chordNotes.push({ t: c.t, d, midi: m + 12, vel: 0.6 })); // C4 รอบกลางคีย์บอร์ด
+    });
+    if (chordNotes.length) extra.push({ id: 'Chords', kind: 'pitched', program: 0, notes: chordNotes });
+    const names = {}; tracks.forEach((tr) => { names[tr.id] = DAW_NAMES[tr.id] || tr.id; });
+    const out = Midi.forDaw({ bpm: g.bpm, tracks }, { downbeat: g.phase, title: song.title, names, extra, markers: ch.map((c) => ({ t: c.t, text: c.chord })) });
+    Midi.download(out.bytes, (song.title || 'aquachord') + ' (FL Studio).mid');
+    A().toast(t('daw.done'), { kind: 'ok', ms: 8000 });
   }
 
   /* ---------------- piano roll ---------------- */
@@ -429,8 +477,9 @@
           const rh = drumH / 4;
           x.fillRect(xx, pitchH + row * rh + rh * 0.15, Math.max(3 * dpr, ww * 0.3), rh * 0.7);
         } else {
-          const y = pitchH - (n.midi - lo + 1) * rowH;
-          x.fillRect(xx, y, ww, Math.max(2 * dpr, rowH - dpr));
+          const y = pitchH - (n.midi - lo + 1) * rowH, hh = Math.max(2 * dpr, rowH - dpr);
+          if (n.fill) { x.save(); x.strokeStyle = x.fillStyle; x.lineWidth = dpr; x.setLineDash([3 * dpr, 2 * dpr]); x.strokeRect(xx + dpr / 2, y + dpr / 2, ww - dpr, hh - dpr); x.restore(); }
+          else x.fillRect(xx, y, ww, hh);
         }
       });
     });
@@ -541,6 +590,9 @@
     $('#fgStyle', el).addEventListener('change', (e) => ls.set('aq.finger.style', e.target.value));
     $('#fgLevel', el).addEventListener('change', (e) => ls.set('aq.finger.level', e.target.value));
     $('#fgMake', el).addEventListener('click', () => makeFinger(ms));
+    if (A().registerPlayer && ms.src !== 'none') {
+      A().registerPlayer('finger', { label: () => t('finger.makePlay'), play: () => { makeFinger(ms); const b = $('#fgPlay', el); if (b) b.click(); } });
+    }
   }
   // คำเตือนจาก Finger เป็นรหัส "code: รายละเอียด" → ข้อความตามภาษาที่เลือก (รหัสที่ไม่รู้จักไม่แสดง)
   function fingerWarnings(ws) {
@@ -576,8 +628,10 @@
     if (!g.bpm && res.bpm) g = { bpm: res.bpm, phase: +res.phase || 0 };
     // n.midi = เสียงที่ได้ยินจริง (รวมคาโป้แล้ว) · n.f นับจากคาโป้
     const capo = +res.capo || 0;
-    const sounding = notes.map((n) => Object.assign({}, n, { vel: n.role === 'melody' ? 0.95 : 0.7 }));
-    cur.fingerMixer = Mixer.create({ tracks: [{ id: 'fingerstyle', kind: 'pitched', program: 25, notes: sounding }] });
+    // เสียงจริงของกีตาร์: สายดังต่อจนดีดสายเดิมซ้ำ (Finger.ringOut) — เล่นตามค่าโน้ตตรง ๆ เสียงขาด ๆ ไม่ลื่น
+    const rung = Finger.ringOut ? Finger.ringOut(notes) : notes;
+    const sounding = rung.map((n) => Object.assign({}, n, { vel: n.role === 'melody' ? 0.95 : 0.7 }));
+    cur.fingerMixer = Mixer.create({ tracks: [{ id: 'fingerstyle', kind: 'pitched', program: 25, notes: sounding }] }, { id: 'finger', label: t('song.tab.finger') });
     out.innerHTML = `<div class="tab-actions fg-actions">
         <button class="button primary sm" type="button" id="fgPlay">${ic('play')}${t('finger.play')}</button>
         <span class="chip">${esc(capo ? tf('finger.capo', { n: capo }) : t('finger.noCapo'))}</span>
@@ -599,12 +653,14 @@
       if (i !== lastI) {
         btns.forEach((b) => { const n = notes[+b.dataset.i]; b.classList.toggle('now', !!n && n.t <= tm && n.t + Math.max(0.12, n.d) > tm); });
         const b = btns.find((x) => x.classList.contains('now'));
-        if (b && fm.playing) { const r = b.parentElement.getBoundingClientRect(); if (r.bottom > innerHeight - 90 || r.top < 80) b.parentElement.scrollIntoView({ block: 'center', behavior: A().motionOn() ? 'smooth' : 'auto' }); }
+        if (b && fm.playing) A().followInView(b.parentElement);
         lastI = i;
       }
     });
-    fm.onEnd(() => { paint(); lastI = -1; btns.forEach((b) => b.classList.remove('now')); });
-    playBtn.addEventListener('click', () => { if (fm.playing) fm.pause(); else { A().stopOtherAudio(); stopMixer(); lastI = -1; fm.play(0); } paint(); });
+    fm.onEnd(() => { lastI = -1; btns.forEach((b) => b.classList.remove('now')); });
+    fm.onState((on) => { paint(); A().keepAwake(on); });
+    playBtn.addEventListener('click', () => { if (fm.playing) fm.pause(); else { lastI = -1; fm.play(0); } });
+    if (A().registerPlayer) A().registerPlayer('finger', { label: () => t('finger.play'), play: () => playBtn.click() });
     tab.addEventListener('click', (e) => {
       const b = e.target.closest('.tab-note'); if (!b) return;
       const n = sounding[+b.dataset.i]; if (n) Music.note(n.midi, 0, 1.2, 0.32, { guitar: true, bright: true });
@@ -651,7 +707,7 @@
   function practiceNotes(expected, o) {
     if (!window.Practice) return;
     stopPractice();
-    A().stopOtherAudio(); stopMixer();
+    A().stopOtherAudio();
     const av = Practice.available();
     const t = A().t, tf = A().tf, ic = A().ic, esc = A().esc, ls = A().ls;
     if (!av || !av.ok) { A().toast(t('practice.noMic'), { kind: 'warn', ms: 6000 }); return; }
@@ -765,7 +821,7 @@
         });
         // ดนตรีประกอบ (ปิดแทร็กที่ฝึก) — เฉพาะโหมดตามจังหวะ
         if (wantBacking) {
-          state.backing = Mixer.create({ tracks: o.backingTracks });
+          state.backing = Mixer.create({ tracks: o.backingTracks }, { id: 'practice', label: t('practice.title') });
           state.backing.setTempo(tempo);
           state.backing.play(startAt, ctxStart);
         }

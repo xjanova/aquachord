@@ -1125,8 +1125,33 @@
     return out.join('\n') + '\n';
   }
 
+  /* ความยาว "เสียงจริง" ของกีตาร์สำหรับเล่น/ส่งออก MIDI
+     ค่า d ใน arrange คือค่าโน้ตตามจังหวะ (มัธยฐาน ~0.2 วิ) — กีตาร์จริงสายที่ดีดแล้วยังกังวานจนกว่าจะดีดสายเดิมซ้ำ
+     เล่นตาม d ตรง ๆ ทุกโน้ตถูกตัดก่อนโน้ตถัดไปบนสายเดียวกัน (วัดได้ ดังแค่ ~52% ของช่องว่าง) → ฟังขาด ๆ ไม่ลื่น
+     ringOut: ยืดแต่ละโน้ตไปจนถึงโน้ตถัดไปบนสายเดียวกัน (เว้น gap) ไม่เกิน maxRing วินาที (เสียงสายจางไปเองก่อนอยู่แล้ว)
+     ไม่สั้นกว่า d เดิม · ไม่แก้ t/s/f/midi · คืนอาร์เรย์ใหม่ (ลำดับเดิม) */
+  function ringOut(notes, opts) {
+    opts = opts || {};
+    const maxRing = opts.maxRing > 0 ? opts.maxRing : 2.4;
+    const gap = opts.gap != null ? opts.gap : 0.015;
+    const list = (Array.isArray(notes) ? notes : (notes && notes.notes) || []).map((n, i) => ({ n, i }));
+    const out = new Array(list.length);
+    const byS = new Map();
+    list.forEach((x) => { const k = Number.isFinite(+x.n.s) ? +x.n.s : 'm' + x.n.midi; if (!byS.has(k)) byS.set(k, []); byS.get(k).push(x); });
+    byS.forEach((arr) => {
+      arr.sort((a, b) => a.n.t - b.n.t);
+      arr.forEach((x, j) => {
+        const t = +x.n.t || 0, d0 = Math.max(0, +x.n.d || 0);
+        const nx = arr[j + 1];
+        const until = nx ? Math.max(0, (+nx.n.t || 0) - t - gap) : maxRing;
+        out[x.i] = Object.assign({}, x.n, { d: r3(Math.max(d0, Math.min(maxRing, until))) });
+      });
+    });
+    return out;
+  }
+
   return {
-    STYLES, OPEN, arrange, toAsciiTab, check,
+    STYLES, OPEN, arrange, toAsciiTab, check, ringOut,
     // ช่องสำหรับเทสต์/ดีบัก (ไม่ใช่ API สาธารณะ)
     _test: { handShift, estimateGrid, chordInfo: (sym, capo) => chordInfo(getMusic(), sym, capo || 0, null), shapeCost, slotReq, violations },
   };

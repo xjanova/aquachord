@@ -160,7 +160,9 @@
     try { return Object.assign({ steps: 0, capo: 0 }, JSON.parse(ls.get('aq.view.' + id, '{}'))); }
     catch (e) { return { steps: 0, capo: 0 }; }
   }
-  function saveViewPrefs(id, p) { ls.set('aq.view.' + id, JSON.stringify({ steps: p.steps, capo: p.capo, bpm: p.bpm || undefined })); }
+  function saveViewPrefs(id, p) { ls.set('aq.view.' + id, JSON.stringify({ steps: p.steps, capo: p.capo, bpm: p.bpm || undefined, tab: p.tab || undefined })); }
+  // เปิดหน้าเพลงที่แท็บไหน (งานแกะแท็บ/แทร็กให้เพลงเดิมเสร็จ → เปิดตรงแท็บนั้นเลย)
+  function setSongTab(id, tab) { const p = viewPrefs(id); p.tab = tab; saveViewPrefs(id, p); }
   function storeSave(doc) {
     try { Store.upsert(doc); return true; }
     catch (e) { toast(t('err.storage'), { kind: 'warn', ms: 6000 }); return false; }
@@ -650,6 +652,7 @@
             try { localStorage.setItem('aq.riff.' + id, JSON.stringify(riff)); return true; } catch (e) { toast(t('err.storage'), { kind: 'warn' }); return false; }
           };
           if (input.lyricsFor) {
+            setSongTab(input.lyricsFor, 'sheet');
             // เนื้อร้องที่ถูกต้อง + ไฟล์เดิม → แทนแผ่นคอร์ดของเพลงเดิม (คง id/ชื่อ/ศิลปิน/โปรด/สถิติ) · เลิกทำได้
             this.st = null; pickedFile = null;
             const old = Store.get(input.lyricsFor);
@@ -678,6 +681,7 @@
           if (input.riffFor || input.tracksFor) {
             // แกะแท็บ/แทร็กให้เพลงที่มีอยู่แล้ว — ไม่สร้างเพลงใหม่ (คอร์ดเดิมไม่เปลี่ยน)
             const songId = input.riffFor || input.tracksFor;
+            setSongTab(songId, input.tracksFor ? 'tracks' : 'tab');
             this.st = null; pickedFile = null;
             let ok, msg;
             if (input.tracksFor) {
@@ -1030,11 +1034,13 @@
       const mapped = seq.map((e) => { const m = mapChord(e.chord); return { t: e.t, chord: m.sound, label: m.shape }; });
       this.seq = mapped; this.i = 0; this.on = true; this.cur = mapped[0].label;
       keepAwake(true);
+      const done = () => { this.on = false; this.cur = null; if (!scrollOn) keepAwake(false); paintPlayer(); paintSteps(-1); };
       const ok = Music.rhythm.play({
         seq: mapped, end, bpm: o.bpm, pattern: o.style, solo: o.solo, key: o.key, seed: hashOf(song.id || 'x'),
+        id: 'player', label: t('song.playSeq'),
         onChord: (i) => { this.i = i + 1; this.cur = mapped[i].label; FX.Orb.pulse(); paintPlayer(); },
         onStep: (k) => paintSteps(k),
-        onEnd: () => { this.on = false; this.cur = null; if (!scrollOn) keepAwake(false); paintPlayer(); paintSteps(-1); },
+        onEnd: done, onStop: done, // onStop = ตัวเล่นอื่น (แท็บ/แทร็ก/ฟิงเกอร์สไตล์) เริ่มเล่นแทน
       });
       if (!ok) { this.on = false; return false; }
       paintPlayer();
@@ -1047,16 +1053,28 @@
       if (!scrollOn) keepAwake(false);
     },
   };
+  // ปุ่มเล่น/หยุดหลักของหน้าเพลงอยู่ในแถบควบคุมลอย (paintTransport) — คอร์ดที่กำลังเล่นแสดงในปุ่มนั้น
+  let paintTransport = null;
   function paintPlayer() {
     const np = $('#nowPlaying');
+    if (np) np.hidden = true;
     $$('[data-act="play"]', view).forEach((btn) => { btn.innerHTML = Player.on ? `${ic('stop')}${t('song.stop')}` : `${ic('play')}${t('song.playSeq')}`; });
     $$('.strip-chord', view).forEach((el) => el.classList.toggle('now', Player.on && el.dataset.chord === Player.cur));
-    if (!Player.on) { np.hidden = true; return; }
-    np.hidden = false;
-    np.innerHTML = `<span class="np-label">${t('song.nowPlaying')}</span><b class="np-chord">${esc(Player.cur || '')}</b><span class="np-count">${Player.i}/${Player.seq.length}</span>
-      <button class="icon-btn" type="button" id="npStop" aria-label="${esc(t('song.stop'))}">${ic('stop')}</button>`;
-    $('#npStop').onclick = () => { Player.stop(); paintPlayer(); };
+    if (paintTransport) paintTransport();
   }
+  // เลื่อนให้แถวที่กำลังเล่นอยู่ใต้แถบควบคุมลอย (ไม่ถูกบัง) และเหนือแถบล่าง
+  function followInView(el) {
+    if (!el) return;
+    const bar = $('#songBar');
+    const top = (bar ? bar.getBoundingClientRect().bottom : 80) + 12;
+    const bottom = innerHeight - (document.body.classList.contains('pd-open') ? 260 : 90);
+    const r = el.getBoundingClientRect();
+    if (r.top >= top && r.bottom <= bottom) return;
+    scrollTo({ top: Math.max(0, scrollY + r.top - top - Math.max(0, (bottom - top - r.height) * 0.2)), behavior: motionOn() ? 'smooth' : 'auto' });
+  }
+  // ตัวเล่นหลักของแต่ละแท็บในหน้าเพลง (ปุ่มเล่นในแถบควบคุมลอย) — แผงต่าง ๆ ลงทะเบียนเองเมื่อพร้อม
+  let songPlayers = {};
+  function registerPlayer(pane, p) { if (p) songPlayers[pane] = p; else delete songPlayers[pane]; if (paintTransport) paintTransport(); }
 
   function lyricsStatusHTML(song) {
     if (song.lyricsError) return `<div class="lyr-status warn">${ic('mic')} ${esc(t('lyrics.err.' + song.lyricsError) || t('lyrics.err.run'))}</div>`;
@@ -1081,6 +1099,16 @@
     const conf = song.confidence && song.confidence.chords ? Math.round(song.confidence.chords * 100) : null;
     const songBpm = Math.round(parseFloat(song.tempo) || 90);
     st.bpm = Math.max(40, Math.min(220, Math.round(+st.bpm || songBpm)));
+    // แท็บของหน้าเพลง (แต่ละงาน/โหมดอยู่คนละแท็บ ไม่ต้องเลื่อนหา) — แท็บที่ใช้ไม่ได้ในเครื่องนี้ไม่แสดง
+    const panes = [
+      { id: 'sheet', icon: 'chords', label: 'song.tab.sheet' },
+      { id: 'play', icon: 'wave', label: 'song.tab.play' },
+      { id: 'tab', icon: 'note', label: 'song.tab.tab' },
+      ...(window.TracksUI && window.Stems && window.TrackStore ? [{ id: 'tracks', icon: 'piano', label: 'song.tab.tracks' }] : []),
+      ...(window.TracksUI && window.Finger ? [{ id: 'finger', icon: 'guitar', label: 'song.tab.finger' }] : []),
+    ];
+    let pane = panes.some((p) => p.id === st.tab) ? st.tab : 'sheet';
+    songPlayers = {};
 
     view.innerHTML = `
       <a class="back-link rise" href="#/library">${ic('back')}${t('nav.library')}</a>
@@ -1106,18 +1134,27 @@
         <div class="song-hero-orb"><div class="orb-stage" id="orbStage"></div></div>
       </section>
 
-      <div class="song-dock rise" id="dock" role="toolbar" aria-label="${esc(t('song.tools'))}">
-        <div class="dock-group"><span class="dock-label">${t('song.transpose')}</span>
-          <button type="button" data-act="key-" aria-label="−1">−</button><span class="dock-val" id="dvKey"></span><button type="button" data-act="key+" aria-label="+1">+</button></div>
-        <div class="dock-group"><span class="dock-label">${t('song.capo')}</span>
-          <button type="button" data-act="capo-" aria-label="capo −">−</button><span class="dock-val" id="dvCapo"></span><button type="button" data-act="capo+" aria-label="capo +">+</button></div>
-        <div class="dock-group"><span class="dock-label">${t('song.fontSize')}</span>
-          <button type="button" data-act="size-" aria-label="A−">A−</button><button type="button" data-act="size+" aria-label="A+">A+</button></div>
-        <div class="dock-group"><button type="button" class="dock-toggle" data-act="scroll" id="dvScroll"></button>
-          <button type="button" data-act="spd-" aria-label="slower">−</button><span class="dock-val" id="dvSpeed"></span><button type="button" data-act="spd+" aria-label="faster">+</button></div>
-        <button type="button" class="dock-reset" data-act="reset" id="dvReset">${ic('reset')}<span>${t('song.original')}</span></button>
+      <div class="song-bar rise" id="songBar" data-pane="${esc(pane)}">
+        <div class="song-tabs" role="tablist" aria-label="${esc(t('song.tabs'))}">
+          ${panes.map((p) => `<button type="button" class="song-tab" role="tab" id="tab-${p.id}" data-pane="${p.id}" aria-controls="pane-${p.id}" aria-selected="${p.id === pane}" tabindex="${p.id === pane ? 0 : -1}">${ic(p.icon)}<span class="st-long">${esc(t(p.label))}</span><span class="st-short">${esc(t(p.label.replace('song.tab.', 'song.tabShort.')))}</span></button>`).join('')}
+        </div>
+        <div class="song-dock" id="dock" role="toolbar" aria-label="${esc(t('song.tools'))}">
+          <button type="button" class="dock-play" id="dvPlay"></button>
+          <div class="dock-group" data-for="sheet play"><span class="dock-label">${t('song.transpose')}</span>
+            <button type="button" data-act="key-" aria-label="−1">−</button><span class="dock-val" id="dvKey"></span><button type="button" data-act="key+" aria-label="+1">+</button></div>
+          <div class="dock-group" data-for="sheet play"><span class="dock-label">${t('song.capo')}</span>
+            <button type="button" data-act="capo-" aria-label="capo −">−</button><span class="dock-val" id="dvCapo"></span><button type="button" data-act="capo+" aria-label="capo +">+</button></div>
+          <div class="dock-group bpm-group" data-for="play"><span class="dock-label">BPM</span>
+            <button type="button" data-act="bpm-" aria-label="BPM −">−</button><span class="dock-val" id="dvBpm"></span><button type="button" data-act="bpm+" aria-label="BPM +">+</button></div>
+          <div class="dock-group" data-for="sheet"><span class="dock-label">${t('song.fontSize')}</span>
+            <button type="button" data-act="size-" aria-label="A−">A−</button><button type="button" data-act="size+" aria-label="A+">A+</button></div>
+          <div class="dock-group" data-for="sheet"><button type="button" class="dock-toggle" data-act="scroll" id="dvScroll"></button>
+            <button type="button" data-act="spd-" aria-label="slower">−</button><span class="dock-val" id="dvSpeed"></span><button type="button" data-act="spd+" aria-label="faster">+</button></div>
+          <button type="button" class="dock-reset" data-act="reset" id="dvReset" data-for="sheet play">${ic('reset')}<span>${t('song.original')}</span></button>
+        </div>
       </div>
 
+      <div class="song-pane" id="pane-play" data-pane="play" role="tabpanel" aria-labelledby="tab-play" ${pane === 'play' ? '' : 'hidden'}>
       <section class="panel play-panel rise" id="playPanel">
         <div class="panel-head">
           <div><div class="eyebrow small">PLAY-ALONG</div><h2 class="section-title">${t('play.title')}</h2></div>
@@ -1126,8 +1163,6 @@
         <div class="play-row">
           <button class="button primary" type="button" data-act="play">${ic('play')}${t('song.playSeq')}</button>
           <label class="mini-field play-style"><span>${t('play.style')}</span><select id="playStyle">${styleOptionsHTML(PLAY.style)}</select></label>
-          <div class="dock-group bpm-group"><span class="dock-label">BPM</span>
-            <button type="button" data-act="bpm-" aria-label="BPM −">−</button><span class="dock-val" id="dvBpm"></span><button type="button" data-act="bpm+" aria-label="BPM +">+</button></div>
           <label class="switch-row solo-row">
             <span class="switch"><input type="checkbox" id="playSolo" ${PLAY.solo ? 'checked' : ''} /><i></i></span>
             <span class="switch-text">${ic('spark')} ${t('play.solo')}</span>
@@ -1137,7 +1172,9 @@
         <div id="patView">${patternHTML(PLAY.style)}</div>
         <p class="panel-note">${t('play.hint')}</p>
       </section>
+      </div>
 
+      <div class="song-pane" id="pane-sheet" data-pane="sheet" role="tabpanel" aria-labelledby="tab-sheet" ${pane === 'sheet' ? '' : 'hidden'}>
       <section class="panel strip-panel rise">
         <div class="panel-head"><div class="eyebrow small">${t('song.chordsIn')}</div><span class="panel-note">${t('song.tapHint')}</span></div>
         <div class="chord-strip" id="strip"></div>
@@ -1147,9 +1184,10 @@
         ${window.LyricFix ? `<div class="lyr-head">${lyricsStatusHTML(song)}<button class="button secondary sm" type="button" data-act="fixLyrics">${ic('mic')}${t('lyrfix.btn')}</button></div>` : lyricsStatusHTML(song)}
         <div class="chordsheet" id="sheet"></div>
       </section>
-      <section class="panel tab-panel rise" id="tabPanel"></section>
-      <section class="panel tracks-panel rise" id="tracksPanel" ${window.TracksUI ? '' : 'hidden'}></section>
-      <section class="panel finger-panel rise" id="fingerPanel" ${window.TracksUI ? '' : 'hidden'}></section>`;
+      </div>
+      <div class="song-pane" id="pane-tab" data-pane="tab" role="tabpanel" aria-labelledby="tab-tab" ${pane === 'tab' ? '' : 'hidden'}><section class="panel tab-panel rise" id="tabPanel"></section></div>
+      <div class="song-pane" id="pane-tracks" data-pane="tracks" role="tabpanel" aria-labelledby="tab-tracks" ${pane === 'tracks' ? '' : 'hidden'}><section class="panel tracks-panel rise" id="tracksPanel"></section></div>
+      <div class="song-pane" id="pane-finger" data-pane="finger" role="tabpanel" aria-labelledby="tab-finger" ${pane === 'finger' ? '' : 'hidden'}><section class="panel finger-panel rise" id="fingerPanel"></section></div>`;
 
     const sheet = $('#sheet'), strip = $('#strip');
 
@@ -1215,6 +1253,56 @@
       paintPlayer();
     }
 
+    // ตัวเล่นหลักของแท็บคอร์ด/เล่นตาม = เล่นทางเดินคอร์ดตามสไตล์ที่เลือก
+    songPlayers.sheet = songPlayers.play = { label: () => t('song.playSeq'), play: () => Player.start(song, mapChord, playOpts()) };
+    const bar = $('#songBar'), playBtn = $('#dvPlay');
+    paintTransport = () => {
+      if (!playBtn.isConnected) return;
+      const cur = Music.transport.current();
+      if (cur) {
+        const extra = cur.id === 'player' && Player.on && Player.cur ? `<b class="dp-chord">${esc(Player.cur)}</b><small>${Player.i}/${Player.seq.length}</small>` : `<small>${esc(cur.label || '')}</small>`;
+        playBtn.innerHTML = `${ic('stop')}<span>${t('song.stop')}</span>${extra}`;
+        playBtn.classList.add('on'); playBtn.disabled = false;
+        playBtn.setAttribute('aria-label', t('song.stop') + (cur.label ? ' · ' + cur.label : ''));
+        return;
+      }
+      const p = songPlayers[pane];
+      playBtn.classList.remove('on');
+      playBtn.disabled = !p;
+      playBtn.innerHTML = `${ic('play')}<span>${esc(p ? p.label() : t('song.nothingToPlay'))}</span>`;
+      playBtn.setAttribute('aria-label', p ? p.label() : t('song.nothingToPlay'));
+    };
+    playBtn.addEventListener('click', () => {
+      try { Music.audioCtx(); } catch (err) {}
+      if (Music.transport.current()) { Music.transport.stopAll(); return; }
+      const p = songPlayers[pane];
+      if (p) p.play();
+    });
+    const unsubTransport = Music.transport.subscribe(() => { if (paintTransport) paintTransport(); });
+    function showPane(id, focus) {
+      if (!panes.some((p) => p.id === id) || id === pane) return;
+      pane = id;
+      if (scrollOn && id !== 'sheet') stopAutoScroll();
+      bar.dataset.pane = id;
+      $$('.song-tab', bar).forEach((b) => { const on = b.dataset.pane === id; b.setAttribute('aria-selected', on); b.tabIndex = on ? 0 : -1; if (on && focus) b.focus(); });
+      $$('.song-pane', view).forEach((el) => { el.hidden = el.dataset.pane !== id; });
+      st.tab = id; saveViewPrefs(song.id, st);
+      // แถบลอยติดหัวจออยู่แล้ว → เลื่อนให้ต้นแท็บใหม่อยู่ใต้แถบพอดี (ไม่ค้างกลางแผงยาว ๆ ของแท็บเดิม)
+      const stickTop = parseFloat(getComputedStyle(bar).top) || 0;
+      if (bar.getBoundingClientRect().top <= stickTop + 1) {
+        const el = $('#pane-' + id);
+        scrollTo({ top: Math.max(0, scrollY + el.getBoundingClientRect().top - bar.getBoundingClientRect().height - stickTop - 8) });
+      }
+      $$('.rise', $('#pane-' + id)).forEach((e) => e.classList.add('in'));
+      update();
+    }
+    $$('.song-tab', bar).forEach((b) => b.addEventListener('click', () => showPane(b.dataset.pane)));
+    $('.song-tabs', bar).addEventListener('keydown', (e) => {
+      const ids = panes.map((p) => p.id), i = ids.indexOf(pane);
+      const go = e.key === 'ArrowRight' ? ids[(i + 1) % ids.length] : e.key === 'ArrowLeft' ? ids[(i - 1 + ids.length) % ids.length] : e.key === 'Home' ? ids[0] : e.key === 'End' ? ids[ids.length - 1] : null;
+      if (go) { e.preventDefault(); showPane(go, true); }
+    });
+
     function toggleScroll() {
       if (scrollOn) { stopAutoScroll(); update(); return; }
       scrollOn = true; keepAwake(true);
@@ -1271,7 +1359,7 @@
       update();
       restart();
     }
-    view._cleanup = () => view.removeEventListener('click', onAct);
+    view._cleanup = () => { view.removeEventListener('click', onAct); unsubTransport(); paintTransport = null; songPlayers = {}; };
 
     // เครื่องดนตรี / สไตล์ / โซโล่ — เปลี่ยนระหว่างเล่นได้ (เริ่มเล่นใหม่ด้วยค่าใหม่)
     $$('[data-inst]', view).forEach((b) => b.addEventListener('click', () => {
@@ -1285,6 +1373,7 @@
     update();
     renderTabPanel(song);
     if (window.TracksUI) TracksUI.mount(song, { tracksEl: $('#tracksPanel'), fingerEl: $('#fingerPanel') });
+    paintTransport();
     FX.Orb.mount($('#orbStage'));
   }
 
@@ -1296,14 +1385,13 @@
     catch (e) { return null; }
   }
   const STR_NAMES = ['E', 'A', 'D', 'G', 'B', 'e'];
+  // แท็บโซโล่เล่นผ่าน Mixer (บัสของตัวเอง + เล่นได้ทีละอย่างทั้งแอป)
+  // เดิมจองโน้ตทั้งริฟฟ์ไว้ล่วงหน้าตรงเข้าบัสหลัก → กดหยุดได้แค่ไฮไลต์ เสียงเล่นต่อจนจบริฟฟ์
   const TabPlay = {
-    on: false, gen: 0, timers: [],
-    stop() {
-      this.on = false; this.gen++;
-      this.timers.forEach(clearTimeout); this.timers = [];
-      $$('.tab-note.now').forEach((e) => e.classList.remove('now'));
-      const b = $('#tabPlay'); if (b) b.innerHTML = `${ic('play')}${t('tab.play')}`;
-    },
+    mixer: null,
+    get on() { return !!(this.mixer && this.mixer.playing); },
+    stop() { if (this.mixer) this.mixer.pause(); },
+    destroy() { if (this.mixer) { this.mixer.destroy(); this.mixer = null; } },
   };
   function fmtClock(sec) { sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
   // แท็บเป็นห้อง ๆ (flex-wrap ตัดบรรทัดเองตามความกว้างจอ) · ห้องว่างยาว ๆ ย่อเป็นตัวคั่น
@@ -1467,30 +1555,32 @@
       setTimeout(() => b.classList.remove('now'), 380);
     });
     const playBtn = $('#tabPlay', el);
-    $('#tabSpeed', el).addEventListener('change', (e) => { ls.set('aq.tab.speed', e.target.value); if (TabPlay.on) { TabPlay.stop(); playBtn.click(); } });
+    TabPlay.destroy();
+    const first = +riff.notes[0].t || 0;
+    // เสียงตอนเล่นเหมือนเดิม: ดังต่อจากค่าโน้ต 0.3 วิ (ไม่เกิน 2 วิ) แบบกีตาร์โซโล่เสียงสว่าง
+    const mixer = TabPlay.mixer = Mixer.create({ tracks: [{ id: 'riff', kind: 'pitched', notes: riff.notes.map((n) => ({ t: +n.t || 0, d: Math.min(2, (+n.d || 0.3) + 0.3), midi: midiOf(n), vel: 0.9, tech: { bright: true } })) }] }, { id: 'tab', label: t('tab.title') });
+    mixer.setTempo(parseFloat(sp0) || 1);
+    const btns = $$('.tab-note', wrap);
+    const paintBtn = () => { playBtn.innerHTML = mixer.playing ? `${ic('stop')}${t('song.stop')}` : `${ic('play')}${t('tab.play')}`; };
+    let lit = new Set();
+    const light = (tm) => {
+      const now = new Set();
+      riff.notes.forEach((n, i) => { const a = +n.t || 0; if (a <= tm + 0.01 && a + Math.max(0.12, +n.d || 0) > tm) now.add(i); });
+      lit.forEach((i) => { if (!now.has(i) && btns[i]) btns[i].classList.remove('now'); });
+      now.forEach((i) => { if (!lit.has(i) && btns[i]) btns[i].classList.add('now'); });
+      if (mixer.playing && now.size) { const i = Math.max(...now); if (!lit.has(i) && btns[i]) followInView(btns[i].parentElement); }
+      lit = now;
+    };
+    mixer.onTime(light);
+    mixer.onState(paintBtn);
+    mixer.onEnd(() => light(-1));
+    $('#tabSpeed', el).addEventListener('change', (e) => { ls.set('aq.tab.speed', e.target.value); mixer.setTempo(parseFloat(e.target.value) || 1); });
     playBtn.addEventListener('click', () => {
-      if (TabPlay.on) { TabPlay.stop(); return; }
-      const c = Music.audioCtx();
-      const sp = parseFloat($('#tabSpeed', el).value) || 1;
-      const t0 = +riff.notes[0].t || 0, start = c.currentTime + 0.15;
-      TabPlay.on = true; const gen = ++TabPlay.gen;
-      playBtn.innerHTML = `${ic('stop')}${t('song.stop')}`;
-      const btns = $$('.tab-note', wrap);
-      riff.notes.forEach((n, i) => {
-        const at = ((+n.t || 0) - t0) / sp;
-        Music.noteAt(midiOf(n), start + at, Math.min(2, (+n.d || 0.3) / sp + 0.3), 0.3, { guitar: true, bright: true });
-        TabPlay.timers.push(setTimeout(() => {
-          if (!TabPlay.on || TabPlay.gen !== gen) return;
-          const b = btns[i]; if (!b) return;
-          $$('.tab-note.now', wrap).forEach((x) => x.classList.remove('now'));
-          b.classList.add('now');
-          const r = b.parentElement.getBoundingClientRect();
-          if (r.bottom > window.innerHeight - 90 || r.top < 80) b.parentElement.scrollIntoView({ block: 'center', behavior: motionOn() ? 'smooth' : 'auto' });
-        }, Math.max(0, (start + at - c.currentTime) * 1000)));
-      });
-      const last = riff.notes[riff.notes.length - 1];
-      TabPlay.timers.push(setTimeout(() => { if (TabPlay.gen === gen) TabPlay.stop(); }, (((+last.t || 0) - t0) / sp + 1.5) * 1000 + 150));
+      if (mixer.playing) { mixer.pause(); return; }
+      const at = mixer.time;
+      mixer.play(at > first + 0.05 && at < mixer.duration - 0.05 ? at : first); // ต่อจากที่หยุดไว้ · จบแล้ว/ยังไม่เริ่ม = เริ่มที่โน้ตแรก
     });
+    registerPlayer('tab', { label: () => t('tab.play'), play: () => playBtn.click() });
     $('#tabCopy', el).addEventListener('click', () => {
       const txt = tabText(riff, phase);
       (navigator.clipboard ? navigator.clipboard.writeText(txt) : Promise.reject(new Error('no clipboard')))
@@ -2005,8 +2095,9 @@
     if (view._cleanup) { view._cleanup(); view._cleanup = null; }
     view._paintLibrary = null;
     stopAutoScroll();
+    Music.transport.stopAll(); // ตัวเล่นทุกตัว (เล่นตาม/แท็บ/แทร็ก/ฟิงเกอร์สไตล์/ห้องคอร์ด) หยุดพร้อมตัดเสียงที่ค้าง
     if (Player.on) Player.stop();
-    Music.rhythm.stop(); TabPlay.stop();
+    TabPlay.destroy();
     if (window.TracksUI) TracksUI.teardown();
     paintPlayer();
     closeChordPop();
@@ -2148,8 +2239,8 @@
     ls, opt, confirmDialog, motionOn, tabBarsHTML, barPhase, songChords, fmtClock, hashOf,
     pickFile: pickFileThen,
     startJob(input) { try { Music.audioCtx(); } catch (e) {} ensureCopyrightAccepted(() => Job.start(input)); },
-    stopOtherAudio() { if (Player.on) { Player.stop(); paintPlayer(); } Music.rhythm.stop(); TabPlay.stop(); },
-    loadRiff, keepAwake,
+    stopOtherAudio() { Music.transport.stopAll(); },
+    loadRiff, keepAwake, followInView, registerPlayer,
   };
   window.addEventListener('hashchange', onHashChange);
   FX.Sky.init && FX.Sky.init($('#sky'), motionOn());

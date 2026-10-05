@@ -34,12 +34,14 @@
   const isNum = (x) => typeof x === 'number' && isFinite(x);
 
   /* trackSet: { bpm, tracks:[{ id, name?, kind:'drums'|'pitched', program, notes:[{t,d,midi,vel}] }] }
-     opts: { title, bpm (ทับ), names: {id: 'ชื่อแสดง'}, include: Set|Array ของ id ที่จะส่งออก } */
+     opts: { title, bpm (ทับ), names: {id: 'ชื่อแสดง'}, include: Set|Array ของ id ที่จะส่งออก,
+             shift: วินาทีที่บวกให้ทุกเวลา (จัดจังหวะ 1 ให้ตรงเส้นห้อง), markers: [{t, text}] ลงแทร็ก conductor } */
   function fromTrackSet(trackSet, opts) {
     opts = opts || {};
     const bpm = clamp(isNum(opts.bpm) ? opts.bpm : (isNum(trackSet && trackSet.bpm) && trackSet.bpm > 0 ? trackSet.bpm : 120), 20, 300);
     const spb = 60 / bpm;
-    const tick = (sec) => Math.max(0, Math.round((sec / spb) * PPQ));
+    const shift = isNum(opts.shift) ? opts.shift : 0;
+    const tick = (sec) => Math.max(0, Math.round(((sec + shift) / spb) * PPQ));
     const include = opts.include ? new Set(opts.include) : null;
     const tracks = ((trackSet && trackSet.tracks) || []).filter((tr) => tr && Array.isArray(tr.notes) && tr.notes.length && (!include || include.has(tr.id)));
 
@@ -51,6 +53,12 @@
     const us = Math.round(60000000 / bpm);
     cd.pushN([0x00, 0xff, 0x51, 0x03, (us >> 16) & 255, (us >> 8) & 255, us & 255]);
     cd.pushN([0x00, 0xff, 0x58, 0x04, 4, 2, 24, 8]);
+    // marker (FF 06) ตามเวลา เช่น ชื่อคอร์ดตรงจุดเปลี่ยนคอร์ด — โปรแกรมดนตรีแสดงเป็นป้ายบนไทม์ไลน์
+    let lastM = 0;
+    (opts.markers || []).filter((mk) => mk && isNum(mk.t) && mk.text).map((mk) => ({ at: tick(mk.t), text: mk.text })).sort((a, b) => a.at - b.at).forEach((mk) => {
+      const b = enc ? Array.from(enc.encode(String(mk.text))).slice(0, 255) : Array.from(String(mk.text)).map((c) => c.charCodeAt(0) & 255).slice(0, 255);
+      cd.vlq(mk.at - lastM); cd.pushN([0xff, 0x06]); cd.vlq(b.length); cd.pushN(b); lastM = mk.at;
+    });
     cd.pushN([0x00, 0xff, 0x2f, 0x00]);
     files.push(cd.a);
 
@@ -101,7 +109,28 @@
     setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   }
 
-  const api = { fromTrackSet, fromNotes, download, PPQ };
+  /* ส่งออกสำหรับโปรแกรมทำเพลง (FL Studio / DAW อื่น) — เปิดแล้วทำงานต่อได้ทันที:
+     - เลื่อนเวลาให้ "จังหวะ 1" ของเพลง (downbeat, วินาที) ตรงเส้นห้องพอดี (โน้ตก่อนห้องแรกอยู่ในห้องนำ 1 ห้อง)
+       ไม่งั้นโน้ตทั้งเพลงเหลื่อมกริดของโปรแกรมเท่ากับเวลาก่อนจังหวะแรกของไฟล์เสียง
+     - extra: แทร็กเพิ่ม (ฟิงเกอร์สไตล์/แท็บโซโล่/คอร์ด) · markers: ชื่อคอร์ด · ชื่อช่องเป็นอักษรอังกฤษ (กันโปรแกรมแสดงภาษาไทยเพี้ยน)
+     คืน { bytes, shift } */
+  function forDaw(trackSet, opts) {
+    opts = opts || {};
+    const bpm = clamp(isNum(trackSet && trackSet.bpm) && trackSet.bpm > 0 ? trackSet.bpm : (isNum(opts.bpm) && opts.bpm > 0 ? opts.bpm : 120), 20, 300);
+    const bar = (60 / bpm) * 4;
+    const tracks = ((trackSet && trackSet.tracks) || []).concat(opts.extra || []).filter((tr) => tr && Array.isArray(tr.notes) && tr.notes.length);
+    let shift = 0;
+    if (isNum(opts.downbeat)) {
+      const ph = ((opts.downbeat % bar) + bar) % bar;
+      shift = ph > 0.005 ? -ph : 0;
+      const first = Math.min(...tracks.flatMap((tr) => tr.notes.map((n) => +n.t || 0)), Infinity);
+      if (isFinite(first) && first + shift < -0.005) shift += bar * Math.ceil(-(first + shift) / bar - 1e-9);
+    }
+    const bytes = fromTrackSet({ bpm, tracks }, { title: opts.title, names: opts.names, shift, markers: opts.markers });
+    return { bytes, shift };
+  }
+
+  const api = { fromTrackSet, fromNotes, forDaw, download, PPQ };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.Midi = api;
 })(typeof window !== 'undefined' ? window : null);
