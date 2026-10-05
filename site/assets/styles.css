@@ -869,6 +869,17 @@ body.pd-open #view { padding-bottom: 300px; }
 .modal h2 { display: flex; align-items: center; gap: 10px; font-family: var(--font-d); font-weight: 600; font-size: 20px; margin-bottom: 10px; }
 .modal h2 .ic { color: var(--acc); width: 22px; height: 22px; }
 .modal p, .modal li { color: var(--muted); font-size: 14px; margin-bottom: 8px; }
+/* วางเนื้อร้องที่ถูกต้อง */
+.lyr-fix { display: grid; gap: 4px; flex: 1 1 100%; font-size: 12px; color: var(--muted); font-weight: 600; }
+.lyr-fix textarea, .lyrfix-text {
+  width: 100%; min-height: 96px; resize: vertical; padding: 10px 12px; border-radius: 10px; outline: none;
+  border: 1px solid var(--line-strong); background: rgba(255, 255, 255, 0.04); color: #fff; font-size: 14px; line-height: 1.6; font-weight: 400;
+}
+.lyrfix-text { min-height: 220px; margin: 6px 0 4px; }
+.lyr-fix textarea:focus, .lyrfix-text:focus { border-color: var(--acc); }
+.lyr-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; margin-bottom: 10px; }
+.lyr-head .lyr-status { margin: 0; flex: 1 1 260px; }
+.lyr-head:not(:has(.lyr-status)) { justify-content: flex-end; }
 .modal ul { padding-left: 20px; margin-bottom: 6px; }
 .modal-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
 .modal-actions .button { flex: 1 1 140px; }

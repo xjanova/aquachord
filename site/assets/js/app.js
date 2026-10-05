@@ -343,6 +343,7 @@
       }));
     });
   }
+  let lyrHintDraft = ''; // เนื้อร้องที่ถูกต้องที่ผู้ใช้วางไว้ (ต่อเพลง — ไม่จำลง localStorage)
   function lyricsBoxHTML() {
     if (!lyricsAvailable()) return '';
     const on = lyrPref.on;
@@ -355,6 +356,7 @@
         </label>
         <div class="lyr-opts" id="lyrOpts" ${on ? '' : 'hidden'}>
           ${lyrSelectsHTML()}
+          ${window.LyricFix ? `<label class="lyr-fix"><span>${t('lyrfix.label')}</span><textarea id="lyrHint" rows="3" maxlength="${LyricFix.MAX_TEXT}" placeholder="${esc(t('lyrfix.ph'))}">${esc(lyrHintDraft)}</textarea></label>` : ''}
           <p class="lyr-hint">${t('lyrics.hint')}</p>
         </div>
       </div>`;
@@ -574,6 +576,8 @@
     const riffOn = $('#riffOn');
     if (riffOn) riffOn.addEventListener('change', () => { riffPref.on = riffOn.checked; });
     wireTracksBox(view);
+    const hintEl = $('#lyrHint', view);
+    if (hintEl) hintEl.addEventListener('input', () => { lyrHintDraft = hintEl.value; });
 
     $('#startBtn').addEventListener('click', () => {
       // เปิด AudioContext ใน gesture แรก (iOS)
@@ -593,6 +597,7 @@
         input = { kind: 'file', file: pickedFile };
       }
       if (lyricsAvailable() && lyrPref.on) input.lyrics = { model: lyrPref.model, lang: lyrPref.lang };
+      if (input.lyrics && window.LyricFix && lyrHintDraft.trim()) input.lyrics.hint = lyrHintDraft;
       if (riffAvailable() && riffPref.on) input.riff = true;
       if (tracksAvailable() && tracksPref.on) input.tracks = tracksPref.mode;
       ensureCopyrightAccepted(() => Job.start(input));
@@ -602,6 +607,11 @@
   /* =====================================================================
      JOB — วิเคราะห์จริงในเครื่อง (analyze.js) · วิ่งต่อได้แม้เปิดหน้าอื่น
      ===================================================================== */
+  // ผลจัดเนื้อร้องจากผู้ใช้ → ข้อความแจ้ง (อัตราตรง / ท่อนซ้ำ / จังหวะโดยประมาณ)
+  function lyrFixMsg(f) {
+    if (f.rough) return t('lyrfix.rough');
+    return tf('lyrfix.done', { p: Math.round((f.match || 0) * 100) }) + (f.repeats ? tf('lyrfix.repeats', { n: f.repeats }) : '');
+  }
   // งานแกะแทร็กจบแล้วว่างนาน → ปิด worker คืนหน่วยความจำ/GPU (โมเดลแยกเครื่องดนตรี ~272 MB) · งานถัดไปโหลดจากแคชในเครื่อง
   let stemsIdle = 0;
   function releaseStemsLater() {
@@ -626,9 +636,10 @@
           // แท็บโซโล่/ริฟฟ์เก็บแยกจาก SongDoc (สัญญากลางห้ามเปลี่ยนโดยไม่บัมป์ schemaVersion)
           const riff = doc._riff, riffErr = doc._riffError;
           const tracks = doc._tracks, tracksErr = doc._tracksError, tracksFallback = doc._tracksFallback;
-          const lyrNote = doc._lyricsNote;
-          delete doc._riff; delete doc._riffError; delete doc._tracks; delete doc._tracksError; delete doc._tracksFallback;
+          const lyrFix = doc._lyricsFix, lyrNote = doc._lyricsNote;
+          delete doc._riff; delete doc._riffError; delete doc._tracks; delete doc._tracksError; delete doc._tracksFallback; delete doc._lyricsFix;
           delete doc._lyricsNote; delete doc._lyrDebug;
+          if (lyrFix && input.lyrics && input.lyrics.hint === lyrHintDraft) lyrHintDraft = '';
           const saveTracks = (id) => {
             if (!tracks || !Array.isArray(tracks.tracks) || !tracks.tracks.length || !window.TrackStore) return Promise.resolve(false);
             return TrackStore.put(id, tracks);
@@ -638,6 +649,32 @@
             if (!riff || !Array.isArray(riff.notes) || !riff.notes.length) return false;
             try { localStorage.setItem('aq.riff.' + id, JSON.stringify(riff)); return true; } catch (e) { toast(t('err.storage'), { kind: 'warn' }); return false; }
           };
+          if (input.lyricsFor) {
+            // เนื้อร้องที่ถูกต้อง + ไฟล์เดิม → แทนแผ่นคอร์ดของเพลงเดิม (คง id/ชื่อ/ศิลปิน/โปรด/สถิติ) · เลิกทำได้
+            this.st = null; pickedFile = null;
+            const old = Store.get(input.lyricsFor);
+            const target = '#/song/' + input.lyricsFor;
+            this.paint();
+            if (!old) { toast(t('song.notFound'), { kind: 'warn' }); return; }
+            const prev = JSON.parse(JSON.stringify(old));
+            const merged = Object.assign({}, old, {
+              chordpro: doc.chordpro.replace(/^\{title:[^}\n]*\}/m, '{title: ' + String(old.title || '').replace(/[{}]/g, '') + '}'),
+              timeline: doc.timeline, lyricsText: doc.lyricsText, key: doc.key, tempo: doc.tempo,
+              confidence: doc.confidence, vocalIsolated: doc.vocalIsolated, tuningCents: doc.tuningCents, updatedAt: Date.now(),
+            });
+            delete merged.lyricsError; delete merged.lyricsEmpty;
+            if (doc.lyricsError) merged.lyricsError = doc.lyricsError;
+            if (doc.lyricsEmpty) merged.lyricsEmpty = true;
+            if (!storeSave(merged)) return;
+            ls.del('aq.view.' + old.id); // คีย์/คาโป้ที่จำไว้ผูกกับแผ่นเดิม
+            const msg = lyrFix ? lyrFixMsg(lyrFix) : (doc.lyricsError ? t('lyrics.err.run') : t('lyrics.none'));
+            const undo = { label: t('common.undo'), run: () => { storeSave(prev); refreshShell(); if (location.hash === target) route(); } };
+            refreshShell();
+            if (curRoute === 'job') location.hash = target;
+            else if (location.hash === target) route();
+            toast(msg, { kind: lyrFix && !lyrFix.rough && lyrFix.match >= 0.3 ? 'ok' : 'warn', ms: 8000, action: undo });
+            return;
+          }
           if (input.riffFor || input.tracksFor) {
             // แกะแท็บ/แทร็กให้เพลงที่มีอยู่แล้ว — ไม่สร้างเพลงใหม่ (คอร์ดเดิมไม่เปลี่ยน)
             const songId = input.riffFor || input.tracksFor;
@@ -671,14 +708,16 @@
           });
           pickedFile = null;
           st.doc = doc;
-          const msg = lyrNote ? t('lyrics.' + lyrNote)
+          // ผลจัดเนื้อจากผู้ใช้มาก่อน · ไม่มี → เหตุผลละเอียดของการถอด (เลยงบเวลา/ฟังไม่ออก) · ไม่มี → ข้อความเดิม
+          const note = lyrNote && !lyrFix ? lyrNote : null;
+          const msg = note ? t('lyrics.' + note)
             : doc.lyricsError ? (t('lyrics.err.' + doc.lyricsError) || t('lyrics.err.run'))
-            : doc.lyricsEmpty ? t('lyrics.none') : t('job.done');
+            : doc.lyricsEmpty ? t('lyrics.none') : lyrFix ? lyrFixMsg(lyrFix) : t('job.done');
           refreshShell();
           if (GD()) GD().cheer(tf('guide.jobDone', { title: doc.title }));
           if (curRoute === 'job') {
             this.st = null;
-            toast(msg, { kind: doc.lyricsError || lyrNote ? 'warn' : 'ok' });
+            toast(msg, { kind: doc.lyricsError || note ? 'warn' : 'ok' });
             location.hash = '#/song/' + doc.id;
           } else {
             toast(msg, { kind: 'ok', action: { label: t('job.open'), run: () => { this.st = null; location.hash = '#/song/' + doc.id; } } });
@@ -709,7 +748,7 @@
         st.ctl.aborted = true; this.st = null; FX.Orb.setBusy(false);
         this.paint();
         // แกะแท็บ/แทร็กให้เพลงเดิม → กลับไปหน้าเพลงนั้น (ไม่ใช่หน้าแรก)
-        const back = st.input && (st.input.tracksFor || st.input.riffFor);
+        const back = st.input && (st.input.tracksFor || st.input.riffFor || st.input.lyricsFor);
         location.hash = back && Store.get(back) ? '#/song/' + back : '#/';
       });
     },
@@ -1022,6 +1061,7 @@
   function lyricsStatusHTML(song) {
     if (song.lyricsError) return `<div class="lyr-status warn">${ic('mic')} ${esc(t('lyrics.err.' + song.lyricsError) || t('lyrics.err.run'))}</div>`;
     if (song.lyricsEmpty) return `<div class="lyr-status">${ic('mic')} ${esc(t('lyrics.none'))}</div>`;
+    if (hasLyrics(song) && String(song.chordpro || '').includes(t('sheet.lyricsUser').slice(0, 16))) return `<div class="lyr-status ok">${ic('mic')} ${esc(t('lyrics.byUser'))}</div>`;
     if (hasLyrics(song)) return `<div class="lyr-status ok">${ic('mic')} ${esc(t('lyrics.byAI') + (song.vocalIsolated ? ' · ' + t('lyrics.isolated') : ''))}</div>`;
     if (song.creator === 'AquaChord AI') return `<div class="lyr-status">${ic('mic')} ${esc(t('lyrics.offHint'))}</div>`;
     return '';
@@ -1104,7 +1144,7 @@
       </section>
 
       <section class="panel sheet-panel rise">
-        ${lyricsStatusHTML(song)}
+        ${window.LyricFix ? `<div class="lyr-head">${lyricsStatusHTML(song)}<button class="button secondary sm" type="button" data-act="fixLyrics">${ic('mic')}${t('lyrfix.btn')}</button></div>` : lyricsStatusHTML(song)}
         <div class="chordsheet" id="sheet"></div>
       </section>
       <section class="panel tab-panel rise" id="tabPanel"></section>
@@ -1223,6 +1263,7 @@
         return;
       }
       else if (a === 'download') { downloadSong(song); return; }
+      else if (a === 'fixLyrics') { openLyricFix(song); return; }
       else if (a === 'delete') { deleteSong(song.id, () => { location.hash = '#/library'; }); return; }
       else return;
       if (Math.abs(st.steps) > 11) st.steps = 0;
@@ -1318,6 +1359,66 @@
       for (let s = 0; s < 6; s++) lines[s] += s === n.s ? n.f + '-' : '-'.repeat(w);
     });
     return lines.reverse().join('\n');
+  }
+  /* ---------------- ใส่เนื้อร้องที่ถูกต้อง (lyricfix.js) ----------------
+     ชีตมีบรรทัดเนื้ออยู่แล้ว → เทียบกับเนื้อที่ถอดได้ ย้ายคอร์ดไปไว้บนพยางค์เดิมในเนื้อของผู้ใช้ (ในเครื่อง ทันที)
+     ชีตคอร์ดล้วน → ต้องฟังเสียงร้องจากไฟล์เดิมเพื่อจับเวลา (งานวิเคราะห์ใหม่ + แทนชีตเดิม ยืนยันก่อน + เลิกทำได้) */
+  function openLyricFix(song) {
+    if (!window.LyricFix) return;
+    const timed = LyricFix.lyricLineCount(song.chordpro) > 0;
+    const m = modal(`<h2>${ic('mic')} ${esc(t('lyrfix.title'))}</h2>
+      <p>${esc(t(timed ? 'lyrfix.desc' : 'lyrfix.needAudio'))}</p>
+      <textarea class="lyrfix-text" id="lfText" maxlength="${LyricFix.MAX_TEXT}" placeholder="${esc(t('lyrfix.ph'))}" data-autofocus>${esc(song.lyricsText || '')}</textarea>
+      <div class="modal-actions">
+        <button class="button secondary" type="button" data-no>${esc(t('common.cancel'))}</button>
+        <button class="button primary" type="button" data-go>${ic(timed ? 'spark' : 'upload')}${esc(t(timed ? 'lyrfix.apply' : 'lyrfix.pickFile'))}</button>
+      </div>`);
+    const ta = $('#lfText', m.root);
+    setTimeout(() => { try { ta.select(); } catch (e) {} }, 60); // วางทับเนื้อเดิมได้ทันที
+    $('[data-no]', m.root).addEventListener('click', () => m.close());
+    $('[data-go]', m.root).addEventListener('click', () => {
+      const text = ta.value;
+      if (!LyricFix.cleanUserLyrics(text).length) { toast(t('lyrfix.empty'), { kind: 'warn' }); ta.focus(); return; }
+      if (!timed) { m.close(); retimeFromFile(song, text); return; }
+      const res = LyricFix.rewriteChordPro(song.chordpro, text, { replaceNote: [t('sheet.lyricsBeta'), t('sheet.lyricsUser')] });
+      const apply = (closeFn) => {
+        const cur = Store.get(song.id);
+        if (!cur) return;
+        const prev = JSON.parse(JSON.stringify(cur));
+        const next = Object.assign({}, cur, { chordpro: res.chordpro, lyricsText: LyricFix.cleanUserLyrics(text).join('\n'), updatedAt: Date.now() });
+        next.confidence = Object.assign({}, cur.confidence || {}, { lyrics: 0.9 });
+        delete next.lyricsError; delete next.lyricsEmpty;
+        if (!storeSave(next)) return;
+        closeFn();
+        route();
+        toast(lyrFixMsg(res), { kind: res.match >= 0.3 ? 'ok' : 'warn', ms: 8000, action: { label: t('common.undo'), run: () => { storeSave(prev); route(); } } });
+      };
+      if (res && res.match >= 0.3) { apply(() => m.close()); return; }
+      // ไม่ค่อยตรง/ไม่ตรงเลย (เช่นถอดผิดภาษา) → แนะนำให้ฟังเสียงจากไฟล์ใหม่โดยใช้เนื้อนี้นำทาง
+      const lm = modal(`<h2>${ic('mic')} ${esc(t('lyrfix.lowTitle'))}</h2>
+        <p>${esc(res ? tf('lyrfix.low', { p: Math.round(res.match * 100) }) : t('lyrfix.none'))}</p>
+        <p>${esc(t('lyrfix.retimeHint'))}</p>
+        <div class="modal-actions">
+          <button class="button secondary" type="button" data-no>${esc(t('common.cancel'))}</button>
+          ${res ? `<button class="button secondary" type="button" data-any>${esc(t('lyrfix.useAnyway'))}</button>` : ''}
+          <button class="button primary" type="button" data-retime data-autofocus>${ic('upload')}${esc(t('lyrfix.retime'))}</button>
+        </div>`);
+      $('[data-no]', lm.root).addEventListener('click', () => lm.close());
+      const any = $('[data-any]', lm.root);
+      if (any) any.addEventListener('click', () => apply(() => lm.close()));
+      $('[data-retime]', lm.root).addEventListener('click', () => { lm.close(); retimeFromFile(song, text); });
+    });
+  }
+  // จับเวลาเนื้อร้องใหม่จากไฟล์เดิม (วิเคราะห์ใหม่ทั้งเพลง โดยใช้เนื้อผู้ใช้นำทาง) → แทนแผ่นคอร์ดเดิม (ยืนยันก่อน + เลิกทำได้)
+  function retimeFromFile(song, text) {
+    if (!lyricsAvailable()) { toast(t('lyrics.err.load'), { kind: 'warn' }); return; }
+    pickFileThen((f) => {
+      confirmDialog({ title: t('lyrfix.replaceQ'), body: tf('lyrfix.replaceDesc', { title: song.title || '' }), ok: t('lyrfix.replace'), danger: true }).then((ok) => {
+        if (!ok) return;
+        try { Music.audioCtx(); } catch (e) {}
+        ensureCopyrightAccepted(() => Job.start({ kind: 'file', file: f, lyrics: { model: lyrPref.model, lang: lyrPref.lang, hint: text }, lyricsFor: song.id }));
+      });
+    });
   }
   function pickFileThen(fn) {
     const inp = document.createElement('input');

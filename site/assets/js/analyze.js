@@ -367,9 +367,17 @@
     // lyrNote (ไม่บันทึกลง SongDoc): 'partial' = เลยงบเวลา ได้เนื้อร้องบางส่วน · 'timeout' = เลยงบแล้วไม่ได้อะไรเลย ·
     // 'unclear' = มีเสียงร้องแต่โมเดลถอดเป็นคำไม่ได้
     let lyrChunks = null, lyricsError = null, vocalIsolated = false, lyrDevice = null, lyrInfo = null, lyrNote = null;
+    // เนื้อร้องที่ผู้ใช้วางมา (lyricfix.js): ใช้ข้อความนี้แทนที่ Whisper ถอดได้ แต่เวลา/คอร์ดตามเสียงจริง
+    const hint = withLyrics && window.LyricFix && typeof input.lyrics.hint === 'string' && input.lyrics.hint.trim() ? input.lyrics.hint : '';
+    let lyrFix = null, voxPcm = null;
+    // ภาษาตามเนื้อที่วาง (ตั้งเป็นไทยแต่วางเนื้ออังกฤษ → Whisper จะเขียนเป็นอักษรไทย เทียบไม่ได้)
+    const hintLang = hint ? (() => {
+      const th = (hint.match(/[ก-๛]/g) || []).length, la = (hint.match(/[A-Za-z]/g) || []).length;
+      return th > la * 0.3 ? 'th' : la > th * 3 ? 'en' : null;
+    })() : null;
     // full: Demucs บอกว่า stem เสียงร้องเงียบ (เพลงบรรเลง ~−70dB · มีเสียงร้อง ~0dB เทียบมิกซ์) → ข้าม Whisper
-    // (บนเพลงบรรเลง Whisper วนสร้างข้อความมั่วได้หลายนาที) ผลเท่ากับ "ไม่พบเนื้อร้อง"
-    const noVocals = !!(sep && sep.level && Number.isFinite(sep.level.vocals) && sep.level.vocals < -40);
+    // (บนเพลงบรรเลง Whisper วนสร้างข้อความมั่วได้หลายนาที) ผลเท่ากับ "ไม่พบเนื้อร้อง" · ผู้ใช้วางเนื้อมา = มีเสียงร้องแน่ ไม่ข้าม
+    const noVocals = !hint && !!(sep && sep.level && Number.isFinite(sep.level.vocals) && sep.level.vocals < -40);
     if (withLyrics && noVocals) P('lyrics', 1);
     else if (withLyrics) {
       try {
@@ -379,15 +387,17 @@
           ? { data: DSP.prepForASR(sep.vocalsPcm16k, LYR_SR), isolated: true }
           : await toVocalPCM(audio, seconds);
         const pcm16 = vox.data;
+        voxPcm = pcm16;
         vocalIsolated = vox.isolated;
         chk(ctl);
         P('lyrics', 0.04, I18N.t('job.lyr.vad'));
         let asrPct = null;
         const res = await Lyrics.transcribe(pcm16, {
           model: input.lyrics.model,
-          lang: input.lyrics.lang,
+          lang: hintLang || input.lyrics.lang,
           duration: seconds,
-          vad: input.lyrics.vad !== false,
+          // ผู้ใช้วางเนื้อมา = มีเสียงร้องแน่ → ไม่ต้องให้ VAD ตัดสิน (ตัวกันลูปยังทำงาน)
+          vad: input.lyrics.vad !== false && !hint,
           ctl,
           // ตรวจเสียงร้อง = 4–8% · โหลดโมเดล = 8–35% ของช่วง lyrics · ถอดเสียง = 35–100%
           onVad: (pct) => P('lyrics', 0.04 + (Math.min(100, pct) / 100) * 0.04, I18N.t('job.lyr.vad') + (pct ? ' ' + pct + '%' : '')),
@@ -403,12 +413,22 @@
         lyrChunks = res.chunks;
         lyrInfo = res.info;
         if (lyrInfo && lyrInfo.guard && lyrInfo.guard.overBudget) lyrNote = 'partial';
+        if (hint) {
+          const f = LyricFix.alignToChunks(hint, DSP.cleanChunks(res.chunks, seconds), { duration: seconds });
+          if (f.chunks.length) { lyrChunks = f.chunks; lyrFix = { match: f.match, lines: f.lines, repeats: f.repeats }; }
+        }
       } catch (e) {
         if (ctl && ctl.aborted) throw new Error('cancelled');
         if (e && e.message === 'cancelled') throw e;
         // ถอดเนื้อร้องพังไม่ทำให้ทั้งงานล้ม — ได้คอร์ดล้วน · ค้างเกินงบ (ถูกปิด worker) ใช้รหัส 'run' เดิมของ SongDoc
         if (e && e.code === 'timeout') { lyricsError = 'run'; lyrNote = 'timeout'; }
         else lyricsError = (e && e.code) || 'run';
+      }
+      // ถอดเสียงไม่ได้/เทียบไม่ติดเลย แต่มีเนื้อจากผู้ใช้ → กระจายบรรทัดตามช่วงที่มีเสียงร้อง (จังหวะโดยประมาณ)
+      if (hint && !lyrFix && voxPcm) {
+        const sp = LyricFix.spreadLines(hint, LyricFix.voicedRegions(voxPcm, LYR_SR));
+        // ได้เนื้อจากผู้ใช้แทนแล้ว → ไม่ต้องแจ้ง timeout/partial ของ Whisper
+        if (sp.chunks.length) { lyrChunks = sp.chunks; lyrFix = { match: 0, lines: sp.lines, rough: true }; lyricsError = null; lyrNote = null; }
       }
     }
     chk(ctl);
@@ -451,6 +471,7 @@
       const cleaned = DSP.cleanChunks(lyrChunks, seconds);
       lyricsText = cleaned.map((c) => c.text).join('\n');
       chordpro = assembleWithLyrics(segs, lyrChunks, bpm, phase, seconds, key, title);
+      if (chordpro && lyrFix) chordpro = chordpro.replace(I18N.t('sheet.lyricsBeta'), I18N.t(lyrFix.rough ? 'sheet.lyricsUserRough' : 'sheet.lyricsUser'));
     }
     if (!chordpro) chordpro = assembleChordPro(segs, bpm, seconds, key, title, phase);
     // เลยงบเวลาแล้วไม่เหลือเนื้อร้องเลย ≠ "ไม่พบเสียงร้อง" → แจ้งว่าถอดไม่สำเร็จ
@@ -478,7 +499,7 @@
       timeline,
       lyricsText,
       source: input.kind === 'file' ? { kind: 'upload', ref: srcName } : { kind: 'url', ref: input.url },
-      confidence: { chords: dec.confidence, lyrics: lyricsText ? (vocalIsolated ? 0.6 : 0.45) : 0 },
+      confidence: { chords: dec.confidence, lyrics: lyricsText ? (lyrFix && !lyrFix.rough ? 0.9 : vocalIsolated ? 0.6 : 0.45) : 0 },
       tuningCents: ch.tuningCents,
       vocalIsolated,
       isPublic: false,
@@ -492,6 +513,7 @@
     // นอก SongDoc (แอปลบก่อนบันทึก): เหตุผลละเอียดสำหรับ toast + สถิติ VAD/ตัวกันลูปไว้ดีบัก
     if (lyrNote) doc._lyricsNote = lyrNote;
     if (lyrInfo) doc._lyrDebug = lyrInfo;
+    if (lyrFix) doc._lyricsFix = lyrFix; // ผลจัดเนื้อจากผู้ใช้ (แอปแจ้งผล แล้วลบก่อนบันทึก)
     if (riff) doc._riff = riff;
     if (riffError) doc._riffError = riffError;
     // แทร็กเครื่องดนตรีเก็บนอก SongDoc เหมือน _riff (แอปย้ายไป IndexedDB แล้วลบออกก่อนบันทึก)
