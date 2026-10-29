@@ -716,6 +716,9 @@ html[data-motion="on"] .empty-orb { animation: gbob 5s var(--ease) infinite; }
 .setting-row.stack .mini-field { flex: 1 1 200px; }
 .sr-label { font-weight: 600; font-size: 14.5px; }
 .sr-desc { color: var(--dim); font-size: 12.5px; line-height: 1.5; }
+.acct-who { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.acct-avatar { flex: none; width: 44px; height: 44px; border-radius: 50%; object-fit: cover; display: grid; place-items: center; font-family: var(--font-d); font-weight: 700; font-size: 18px; color: var(--acc-ink); background: var(--acc); box-shadow: 0 0 0 2px rgba(45, 212, 191, 0.35); }
+.acct-panel .button { flex: none; }
 .switch-lang { display: inline-flex; flex: none; padding: 4px; gap: 4px; border-radius: 12px; border: 1px solid var(--line); background: rgba(255, 255, 255, 0.025); }
 .switch-lang button { min-width: 56px; min-height: 36px; padding: 0 12px; border-radius: 9px; font-family: var(--font-d); font-weight: 600; font-size: 13px; color: var(--muted); }
 .switch-lang button.active { background: var(--acc); color: var(--acc-ink); }

@@ -51,6 +51,7 @@
     guitar: '<path d="M20.5 3.5l-6.2 6.2M18.4 2.6l3 3"/><path d="M14.3 9.7a3.4 3.4 0 0 0-4.6-.3 2.6 2.6 0 0 1-2.1.7 3.7 3.7 0 0 0-3.1 1.2c-1.9 1.9-1.6 5.2.6 7.4s5.5 2.5 7.4.6a3.7 3.7 0 0 0 1.2-3.1 2.6 2.6 0 0 1 .7-2.1 3.4 3.4 0 0 0-.1-4.4z"/><circle cx="10" cy="14" r="1.3"/>',
     piano: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 12.5V19M12 12.5V19M16 12.5V19"/><path d="M6.6 5h2.8v7.5H6.6zM10.6 5h2.8v7.5h-2.8zM14.6 5h2.8v7.5h-2.8z" fill="currentColor" stroke="none"/>',
     copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5v-2a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"/>',
+    user: '<circle cx="12" cy="8.5" r="4"/><path d="M4.5 20.5c1.2-3.8 4-5.8 7.5-5.8s6.3 2 7.5 5.8"/>',
   };
   const ic = (n, cls) => `<svg class="ic${cls ? ' ' + cls : ''}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[n] || ''}</svg>`;
 
@@ -376,6 +377,101 @@
   let pickedFile = null;   // คงไว้หลังแกะพลาด → กดลองใหม่ได้ทันที
 
   function fmtSize(b) { return b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB'; }
+
+  // เพลงที่แอปพันธมิตร (X-DREAMER / aixman) ส่งมาทางลิงก์ #/import → ใส่ลงช่องไฟล์ (+ เนื้อร้องที่ถูกต้อง) ให้ผู้ใช้กดเริ่มเอง
+  // ไม่เริ่มแกะอัตโนมัติ: ผู้ใช้ต้องยอมรับเงื่อนไขลิขสิทธิ์และเลือกตัวเลือกก่อน · สัญญาอยู่ที่ docs/10-SONG-HANDOFF.md
+  // สมาชิก = บัญชี XMAN ID (api/lib/member.php — ล็อกอินครั้งแรกสร้างสมาชิกให้อัตโนมัติ) · token เก็บในเครื่อง ส่งเป็น Bearer
+  const Member = {
+    get() { try { const v = JSON.parse(ls.get('aq.member', 'null')); return v && v.token && v.member ? v : null; } catch (e) { return null; } },
+    set(v) { ls.set('aq.member', JSON.stringify(v)); },
+    clear() { ls.del('aq.member'); },
+  };
+  function memberApi(path, o) {
+    o = o || {};
+    const m = Member.get();
+    const headers = { Accept: 'application/json' };
+    if (o.body) headers['Content-Type'] = 'application/json';
+    if (m && o.auth !== false) headers.Authorization = 'Bearer ' + m.token;
+    return fetch('/api' + path, { method: o.method || 'GET', headers, body: o.body ? JSON.stringify(o.body) : undefined, cache: 'no-store', credentials: 'omit' })
+      .then((r) => r.json().catch(() => ({})).then((j) => ({ status: r.status, ok: r.ok, j })));
+  }
+  function acctErr(code) { const k = 'acct.err.' + code; return t(k) !== k ? t(k) : t('acct.err.invalid'); }
+  function finishSignIn(hash) {
+    const q = new URLSearchParams((hash.split('?')[1] || ''));
+    const ticket = q.get('ticket') || '', bad = q.get('error');
+    const repaint = () => { if (curRoute === 'settings') { const y = window.scrollY; renderSettings(); window.scrollTo(0, y); } };
+    if (bad || !/^[a-f0-9]{64}$/.test(ticket)) { toast(acctErr(bad || 'invalid'), { kind: 'warn', ms: 7000 }); return; }
+    memberApi('/member/redeem', { method: 'POST', body: { ticket }, auth: false })
+      .then((r) => {
+        if (!r.ok || !r.j.token) { toast(acctErr(r.status === 410 ? 'expired' : 'invalid'), { kind: 'warn', ms: 7000 }); return; }
+        Member.set({ token: r.j.token, member: r.j.member });
+        toast(tf('acct.welcome', { name: r.j.member.name || r.j.member.email || 'XMAN ID' }), { kind: 'ok', ms: 6000 });
+        repaint();
+      })
+      .catch(() => toast(acctErr('network'), { kind: 'warn', ms: 7000 }));
+  }
+  function accountPanelHTML() {
+    const m = Member.get();
+    if (!m) return `
+        <section class="panel rise acct-panel">
+          <h2 class="panel-title">${ic('user')}${t('acct.title')}</h2>
+          <div class="setting-row"><div><div class="sr-label">${t('acct.xman')}</div><div class="sr-desc">${t('acct.xmanDesc')}</div></div>
+            <button class="button primary sm" type="button" id="acctIn">${ic('user')}${t('acct.signIn')}</button></div>
+        </section>`;
+    const p = m.member, name = p.name || p.email || 'XMAN ID';
+    const face = p.avatar ? `<img class="acct-avatar" src="${esc(p.avatar)}" alt="" width="44" height="44" referrerpolicy="no-referrer" />`
+      : `<span class="acct-avatar">${esc(name.trim().charAt(0).toUpperCase() || '♪')}</span>`;
+    return `
+        <section class="panel rise acct-panel">
+          <h2 class="panel-title">${ic('user')}${t('acct.title')}</h2>
+          <div class="setting-row"><div class="acct-who">${face}<div><div class="sr-label">${esc(name)}</div><div class="sr-desc">${p.email ? esc(p.email) + ' · ' : ''}${t('acct.linked')}</div></div></div>
+            <button class="button secondary sm" type="button" id="acctOut">${t('acct.signOut')}</button></div>
+        </section>`;
+  }
+  function wireAccountPanel() {
+    const inBtn = $('#acctIn', view), outBtn = $('#acctOut', view);
+    if (inBtn) inBtn.addEventListener('click', () => { location.href = '/api/auth/xman/start'; });
+    if (outBtn) outBtn.addEventListener('click', () => {
+      memberApi('/member/logout', { method: 'POST' }).catch(() => {});
+      Member.clear(); renderSettings(); toast(t('acct.signedOut'));
+    });
+    // ตรวจว่า token ยังใช้ได้ (หมดอายุ/ถูกเพิกถอน → ออกจากระบบในเครื่อง) · ออฟไลน์ = คงไว้
+    if (Member.get()) memberApi('/member/me').then((r) => {
+      const cur = Member.get(); if (!cur) return;
+      if (r.status === 401) { Member.clear(); if (curRoute === 'settings') renderSettings(); }
+      else if (r.ok && r.j.member) Member.set({ token: cur.token, member: r.j.member });
+    }).catch(() => {});
+  }
+
+  let receiving = false;
+  function receiveSong(hash) {
+    if (!window.Handoff) return;
+    const fail = (e) => {
+      const k = 'handoff.err.' + (e && e.code);
+      toast(t(k) !== k ? t(k) : t('handoff.err.fetch'), { kind: 'warn', ms: 8000 });
+    };
+    let req;
+    try { req = Handoff.parse(hash); } catch (e) { fail(e); return; }
+    if (!req || receiving) return;
+    receiving = true;
+    toast(t('handoff.loading'), { ms: 3500 });
+    Handoff.receive(req, { here: location })
+      .then(({ file, meta }) => {
+        pickedFile = file; ingestMode = 'file';
+        const withLyrics = !!(meta.lyrics && window.LyricFix && lyricsAvailable());
+        if (withLyrics) {
+          lyrHintDraft = meta.lyrics.slice(0, LyricFix.MAX_TEXT);
+          lyrPref.on = true;
+          if (meta.lang) lyrPref.lang = meta.lang;
+        }
+        if (curRoute === 'home') { const y = window.scrollY; renderHome(); window.scrollTo(0, y); }
+        const vars = { title: file.name.replace(/\.[a-z0-9]{2,5}$/i, ''), from: meta.source.name || 'X-DREAMER' };
+        toast(tf(withLyrics ? 'handoff.readyLyrics' : 'handoff.ready', vars), { kind: 'ok', ms: 8000 });
+        if (GD()) GD().say(tf('guide.fileReady', { name: file.name }));
+      })
+      .catch(fail)
+      .finally(() => { receiving = false; });
+  }
 
   function songCardHTML(s) {
     const hue = 160 + (hashOf(s.id || s.title || '') % 130);
@@ -1972,6 +2068,7 @@
         </div>
       </section>
       <div class="settings-grid">
+        ${accountPanelHTML()}
         <section class="panel rise">
           <h2 class="panel-title">${ic('globe')}${t('settings.general')}</h2>
           <div class="setting-row"><div><div class="sr-label">${t('settings.language')}</div><div class="sr-desc">${t('settings.languageDesc')}</div></div>
@@ -2029,6 +2126,7 @@
     })));
     wireLyricsSelects(view);
     paintGpu(view);
+    wireAccountPanel();
 
     $('#exportBtn').addEventListener('click', () => {
       const blob = new Blob([Store.exportJSON()], { type: 'application/json' });
@@ -2108,7 +2206,20 @@
     const parts = parseHash(location.hash);
     teardown();
     leaveGuard = null;
-    const r = parts[0] || '';
+    let r = (parts[0] || '').split('?')[0];
+    if (r === 'import') {
+      // ลิงก์ส่งเพลงพก token อายุสั้น — อ่านแล้วลบออกจากแถบที่อยู่/ประวัติทันที (กดย้อนกลับไม่ดึงซ้ำ)
+      const h = location.hash;
+      try { history.replaceState(null, '', '#/'); } catch (e) {}
+      lastHash = '#/'; r = '';
+      receiveSong(h);
+    } else if (r === 'signed-in') {
+      // กลับมาจาก XMAN ID พร้อม ticket ใช้ครั้งเดียว — ลบออกจากแถบที่อยู่/ประวัติก่อนแลก
+      const h = location.hash;
+      try { history.replaceState(null, '', '#/settings'); } catch (e) {}
+      lastHash = '#/settings'; r = 'settings';
+      finishSignIn(h);
+    }
     if (r === '') curRoute = 'home';
     else if (['library', 'settings', 'chords', 'song', 'edit', 'job'].includes(r)) curRoute = r;
     else curRoute = 'home';

@@ -7,6 +7,7 @@ define('AQUA', 1);
 require __DIR__ . '/lib/util.php';
 require __DIR__ . '/lib/db.php';
 require __DIR__ . '/lib/auth.php';
+require __DIR__ . '/lib/member.php';
 
 set_error_handler(function ($no, $str, $file, $line) {
     error_log("[aquachord] $str @ $file:$line");
@@ -296,6 +297,17 @@ route($method, '/site', 'GET', $path, function () {
         'announcement_en'   => $s['announcement_en'] ?? '',
     ]]);
 });
+
+/* ---------------- สมาชิก (XMAN ID — สมัครอัตโนมัติครั้งแรก) ---------------- */
+route($method, '/auth/xman/start', 'GET', $path, function () { sso_start(); });
+route($method, '/auth/xman/callback', 'GET', $path, function () { sso_callback(); });
+route($method, '/member/redeem', 'POST', $path, function () use ($b) { member_redeem($b); });
+route($method, '/member/me', 'GET', $path, function () {
+    $m = current_member();
+    if (!$m) fail('UNAUTHORIZED', 'กรุณาเข้าสู่ระบบ', 401);
+    send_json(['member' => member_public($m)]);
+});
+route($method, '/member/logout', 'POST', $path, function () { member_logout(); });
 
 /* ---------------- 404 ---------------- */
 fail('NOT_FOUND', 'ไม่พบปลายทางนี้', 404);

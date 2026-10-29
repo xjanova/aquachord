@@ -54,6 +54,23 @@
 |---|---|---|
 | `GET` | `/api/health` | `{"status":"ok","pipeline_mode":"fake","version":"0.1.0"}` — ใช้เช็ค deploy + FE ใช้ตัดสินใจเข้า demo mode |
 
+### สมาชิก — เข้าสู่ระบบด้วย XMAN ID (`site/api/lib/member.php`)
+
+ใช้บัญชีเดียวกับ xman studio / X-DREAMER · **ล็อกอินครั้งแรก = สร้างสมาชิก AquaChord ให้อัตโนมัติ** (ไม่มีหน้าสมัคร ไม่มีรหัสผ่านของตัวเอง)
+ใช้ SSO ตัวเดียวกับ aixman (PKCE S256 + state) — xmanstudio: `GET /auth/xdreamer/authorize`, `POST /api/v1/auth/sso/exchange`
+
+| Method | Path | ทำอะไร |
+|---|---|---|
+| `GET` | `/api/auth/xman/start` | ใส่ cookie `aq_sso` (verifier+state, httpOnly, Lax, path `/api/auth/xman`, 10 นาที) → 302 ไป xman4289.com |
+| `GET` | `/api/auth/xman/callback?code&state` | ตรวจ state → แลก code → upsert `members` → 302 `/#/signed-in?ticket=<64hex>` (ใช้ครั้งเดียว 60 วิ) · ผิดพลาด → `/#/signed-in?error=unavailable\|invalid\|expired\|upstream\|inactive` |
+| `POST` | `/api/member/redeem` `{ticket}` | → `{token, member}` · ticket ใช้แล้ว/หมดอายุ → 410 |
+| `GET` | `/api/member/me` (Bearer) | `{member:{id,name,email,avatar,provider:"xman",created_at}}` |
+| `POST` | `/api/member/logout` (Bearer) | เพิกถอน token |
+
+- token สมาชิกอายุ 30 วัน เก็บใน DB เป็น sha256 · ใช้กับ API แอดมินไม่ได้ (คนละตาราง)
+- ตั้งค่าใน `private/config.php`: `xman_sso_secret` (= `XDREAMER_SSO_SECRET` ของ xmanstudio), `xman_url`, `public_url`
+- xmanstudio ต้องเพิ่ม `https://aquachord.online/api/auth/xman/callback` ใน `XDREAMER_SSO_REDIRECT_URIS` (ตรงทุกตัวอักษร ห้ามมี / ท้าย)
+
 ## 3. Error Codes
 
 | code | HTTP | ความหมาย (message ตัวอย่าง) |

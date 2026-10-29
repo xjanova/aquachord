@@ -15,4 +15,11 @@ return [
     'db_name' => 'admin_aquachord',
     'db_user' => 'admin_aquachord',
     'db_pass' => 'CHANGE_ME',
+
+    // "เข้าสู่ระบบด้วย XMAN ID" (lib/member.php) — ค่าเดียวกับ XDREAMER_SSO_SECRET ของ xmanstudio
+    // ว่าง = ปุ่มล็อกอินแจ้งว่ายังไม่เปิดใช้ (ไม่พังเงียบ)
+    'xman_sso_secret' => '',
+    'xman_url'        => 'https://xman4289.com',
+    // ต้องตรงกับที่ลงไว้ใน XDREAMER_SSO_REDIRECT_URIS ของ xmanstudio: <public_url>/api/auth/xman/callback
+    'public_url'      => 'https://aquachord.online',
 ];

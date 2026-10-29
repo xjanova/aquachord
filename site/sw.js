@@ -1,5 +1,5 @@
 /* AquaChord service worker — precache app shell, offline-first */
-const CACHE = 'aquachord-1.8.0';
+const CACHE = 'aquachord-1.9.0';
 const ASSETS = [
   './',
   './index.html',
@@ -25,6 +25,7 @@ const ASSETS = [
   './assets/js/stems-worker.js',
   './assets/js/tracks.js',
   './assets/js/analyze.js',
+  './assets/js/handoff.js',
   './assets/js/notation.js',
   './assets/js/midi.js',
   './assets/js/trackstore.js',

@@ -95,6 +95,34 @@ function migrate(PDO $db): void {
         ts BIGINT NOT NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+    // สมาชิก = บัญชี XMAN ID (ดู lib/member.php) · token/ticket เก็บเป็น sha256 — DB หลุดก็เอาไปล็อกอินไม่ได้
+    $db->exec("CREATE TABLE IF NOT EXISTS members (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        xman_user_id INT NOT NULL UNIQUE,
+        name VARCHAR(160) NOT NULL DEFAULT '',
+        email VARCHAR(255) NOT NULL DEFAULT '',
+        avatar VARCHAR(500) NULL,
+        created_at BIGINT NOT NULL,
+        last_login BIGINT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS member_sessions (
+        token CHAR(64) PRIMARY KEY,
+        member_id INT NOT NULL,
+        created_at BIGINT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        ip VARCHAR(45),
+        INDEX idx_msess_member (member_id),
+        CONSTRAINT fk_msess_member FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $db->exec("CREATE TABLE IF NOT EXISTS member_tickets (
+        ticket CHAR(64) PRIMARY KEY,
+        member_id INT NOT NULL,
+        expires_at BIGINT NOT NULL,
+        CONSTRAINT fk_mtick_member FOREIGN KEY (member_id) REFERENCES members(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
     $defaults = [
         'site_name'         => 'AquaChord',
         'copyright_email'   => '',

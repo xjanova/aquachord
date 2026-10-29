@@ -61,6 +61,8 @@ jobs:
         run: node tools/test-midi.cjs
       - name: เทสต์โน้ตเพลง (ทำนอง → ABC/โน้ตสากล/โน้ตไทย)
         run: node tools/test-notation.cjs
+      - name: เทสต์รับเพลงจากแอปพันธมิตร (ลิงก์ #/import · allowlist · manifest · ดึงไฟล์)
+        run: node tools/test-handoff.cjs
       - name: ตรวจ JSON (manifest, version)
         run: |
           node -e "JSON.parse(require('fs').readFileSync('site/manifest.webmanifest','utf8'));console.log('manifest ok')"
