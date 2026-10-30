@@ -89,11 +89,13 @@ async function getPipe(repo, id, gpuOnly) {
         device = 'wasm-fallback';
       }
     } else if (major >= 3) {
-      // WebGPU: encoder fp32 (ชัวร์สุดเรื่อง op support) + decoder q8 (เล็ก/ไฟล์เดียวกับ WASM)
+      // encoder fp32 บน WebGPU (ชัวร์สุดเรื่อง op support) + decoder q8 บน WASM (เล็ก/ไฟล์เดียวกับ WASM)
+      // ห้ามรัน decoder q8 บน WebGPU: วัดจริงบน GTX 1070 Ti ได้คำมั่วหลายภาษา ไม่เจอ EOS เลยวิ่งเต็ม 448 token ทุกช่วง
+      // (whisper-base 30 วินาที 48 token: q8 บน WebGPU 229 ms/token มั่ว · q8 บน WASM 45 ms/token ถูก)
       if (await gpuAdapter()) {
         try {
           pipe = await lib.pipeline('automatic-speech-recognition', repo, {
-            device: 'webgpu',
+            device: { encoder_model: 'webgpu', decoder_model_merged: 'wasm' },
             dtype: { encoder_model: 'fp32', decoder_model_merged: 'q8' },
             progress_callback,
           });

@@ -387,7 +387,8 @@
           ? { data: DSP.prepForASR(sep.vocalsPcm16k, LYR_SR), isolated: true }
           : await toVocalPCM(audio, seconds);
         const pcm16 = vox.data;
-        voxPcm = pcm16;
+        // Lyrics.transcribe ส่ง pcm16 เข้า worker แบบ transfer (buffer เดิมว่างทันที) → เก็บสำเนาไว้กระจายเนื้อเมื่อถอดไม่ได้
+        voxPcm = hint ? pcm16.slice() : null;
         vocalIsolated = vox.isolated;
         chk(ctl);
         P('lyrics', 0.04, I18N.t('job.lyr.vad'));

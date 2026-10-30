@@ -153,6 +153,35 @@ for (const [name, seq] of Object.entries(FX.loops)) {
   await pipe.model.generate({});
   t(real === 2, 'ไม่มีงานที่กำลังถอด (_aqRun = null) ต้องเรียก generate จริงตามปกติ');
 
+  // 7) getPipe: decoder q8 ต้องไม่รันบน WebGPU (ได้คำมั่ว วิ่งเต็ม 448 token ทุกช่วง) · encoder ยังใช้ GPU
+  {
+    const calls = [];
+    let gpuBreaks = false;
+    ctx.__lib = {
+      env: { version: '3.3.3' },
+      pipeline: async (task, repo, o) => {
+        calls.push(o);
+        if (gpuBreaks && o.device) throw new Error('webgpu session failed');
+        return {};
+      },
+    };
+    ctx.navigator = { gpu: { requestAdapter: async () => ({ features: new Set() }) } };
+    vm.runInContext('libPromise = Promise.resolve(__lib)', ctx);
+    const p1 = await ctx.getPipe('Xenova/whisper-base', 1, false);
+    const o = calls[0];
+    t(o.device.encoder_model === 'webgpu' && o.device.decoder_model_merged === 'wasm' && o.dtype.decoder_model_merged === 'q8',
+      'decoder q8 ต้องอยู่บน wasm และ encoder อยู่บน webgpu: ' + JSON.stringify({ device: o.device, dtype: o.dtype }));
+    t(p1._aqDevice === 'webgpu', 'ได้ encoder บน GPU ต้องรายงาน device เป็น webgpu ได้ ' + p1._aqDevice);
+    calls.length = 0;
+    gpuBreaks = true;
+    const p2 = await ctx.getPipe('Xenova/whisper-tiny', 2, false);
+    t(calls.length === 2 && !calls[1].device && calls[1].dtype === 'q8' && p2._aqDevice === 'wasm', 'WebGPU ใช้ไม่ได้ต้องตกไป WASM q8');
+    calls.length = 0;
+    ctx.navigator = {};
+    const p3 = await ctx.getPipe('Xenova/whisper-small', 3, false);
+    t(calls.length === 1 && !calls[0].device && p3._aqDevice === 'wasm', 'ไม่มี GPU ต้องไม่ลอง WebGPU');
+  }
+
   console.log('=== ตัวกันลูปของ Whisper (lyrics-worker.js) ===');
   console.log('เนื้อร้องจริง ' + Object.keys(FX.legit).length + ' ชุด (ไทย/อังกฤษ/ท่อนซ้ำ ± token เวลา) ต้องผ่านครบ');
   console.log('ลูปจริงจากเบราว์เซอร์ (เพดาน Whisper 448 token/ช่วง):');
